@@ -1,0 +1,678 @@
+{% extends "base.html" %}
+
+{% block title %}Analyzer · Sparsifire{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* :root variables inherited from base.html */
+
+    body {
+        overflow-y: scroll;
+    }
+
+    .analyzer-wrapper {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    /* --- CONFIG HEADER --- */
+    .config-header {
+        position: sticky;
+        top: 1rem;
+        z-index: 100;
+        padding: 0 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .config-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+    }
+
+    .features-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem 1.5rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+        margin-bottom: 2rem;
+    }
+
+    /* --- DOCUMENT GRID --- */
+    .doc-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .doc-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: block;
+        position: relative;
+    }
+
+    .doc-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        background: rgba(231, 76, 60, 0.05);
+    }
+
+    .doc-card h6 {
+        color: #fff;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+
+    .doc-card p {
+        color: #888;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        margin: 0;
+    }
+
+    .doc-card .meta {
+        font-family: monospace;
+        font-size: 0.7rem;
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    /* --- BARCODE --- */
+    .barcode-container {
+        background: black;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 30px 10px 5px 10px;
+        margin-bottom: 1.5rem;
+        overflow-x: auto;
+        box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .barcode-track {
+        display: flex;
+        height: 280px;
+        align-items: flex-end;
+        gap: 4px;
+        padding: 0 10px;
+        min-width: 100%;
+        width: max-content;
+    }
+
+    .barcode-line {
+        display: block;
+        width: 14px;
+        background: var(--gradient-primary);
+        border-radius: 2px 2px 0 0;
+        opacity: 0;
+        transition: all 0.15s;
+        cursor: pointer;
+        text-decoration: none;
+        transform-origin: bottom;
+        transform: scaleY(0.1);
+    }
+
+    .barcode-line.animated-bar {
+        animation: barGrow 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes barGrow {
+        from {
+            transform: scaleY(0);
+            opacity: 0;
+        }
+        to {
+            transform: scaleY(1);
+            opacity: 0.85;
+        }
+    }
+
+    .barcode-line:hover {
+        background: #fff !important;
+        opacity: 1;
+        transform: scaleY(1.05);
+        box-shadow: 0 0 15px #d946ef;
+        z-index: 10;
+    }
+
+    .barcode-line.dimmed {
+        opacity: 0.1;
+        filter: grayscale(100%);
+        pointer-events: none;
+    }
+
+    .content-box {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 2rem;
+        font-family: 'Georgia', serif;
+        font-size: 1.1rem;
+        line-height: 1.8;
+        color: #dcdcdc;
+    }
+
+    .feature-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 0.85rem;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.1s;
+    }
+
+    .feature-row:hover {
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    #hover-tooltip {
+        position: fixed;
+        background: rgba(15, 15, 15, 0.98);
+        border: 1px solid var(--accent);
+        padding: 0.8rem;
+        border-radius: 4px;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 9999;
+        width: 260px;
+        transition: opacity 0.1s;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 1);
+    }
+
+    .hover-white:hover {
+        color: #fff !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="analyzer-wrapper">
+
+    <!-- ========================== CONFIG PANEL ========================== -->
+    <div class="config-header">
+        <div class="config-panel">
+            <p class="text-muted small mb-3">
+                Analyze how specific documents activate the features of the SAE.
+                Select a dataset, a run and a document to begin.
+            </p>
+
+            <form method="get" class="d-flex align-items-center gap-3 flex-wrap">
+
+                <!-- DATASET -->
+                <div class="d-flex flex-column">
+                    <label class="text-muted text-uppercase small fw-bold" style="font-size: 0.65rem;">
+                        Dataset
+                    </label>
+
+                    <select name="dataset_id"
+                            class="form-select form-select-sm bg-dark text-white border-secondary"
+                            style="min-width: 200px;"
+                            onchange="this.form.submit()">
+
+                        <option value="" disabled {% if not selected_dataset %}selected{% endif %}>
+                            Select Dataset...
+                        </option>
+
+                        {% for ds in datasets %}
+                        <option value="{{ ds.id }}"{% if selected_dataset and selected_dataset.id == ds.id %} selected{% endif %}>
+                            {{ ds.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- SAE MODEL -->
+                {% if selected_dataset %}
+                <div class="d-flex flex-column">
+                    <label class="text-muted text-uppercase small fw-bold" style="font-size: 0.65rem;">
+                        SAE Model
+                    </label>
+
+                    <select name="run_id"
+                            class="form-select form-select-sm bg-dark text-white border-secondary"
+                            style="min-width: 200px;"
+                            onchange="this.form.submit()">
+
+                        <option value="" disabled {% if not selected_run %}selected{% endif %}>
+                            Select Run...
+                        </option>
+
+                        {% for r in run_list %}
+                        <option value="{{ r.id }}"{% if selected_run and selected_run.id == r.id %} selected{% endif %}>
+                            Run #{{ r.id }} (k={{ r.k_sparsity }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <!-- DOCUMENT -->
+                {% if selected_run %}
+                <div class="d-flex flex-column">
+                    <label class="text-muted text-uppercase small fw-bold" style="font-size: 0.65rem;">
+                        Document
+                    </label>
+
+                    <select name="doc_id"
+                            class="form-select form-select-sm bg-dark text-white border-secondary"
+                            style="min-width: 260px;"
+                            onchange="this.form.submit()">
+
+                        <option value="" disabled {% if not selected_doc %}selected{% endif %}>
+                            Select Document...
+                        </option>
+
+                        {% for doc in documents_list %}
+                        <option value="{{ doc.id }}"{% if selected_doc and selected_doc.id == doc.id %} selected{% endif %}>
+                            #{{ doc.external_id }} · {{ doc.text|truncatechars:60 }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+            </form>
+        </div>
+    </div>
+
+
+    <div class="container-fluid px-4 pb-5">
+
+        {% if selected_dataset %}
+
+        {# ==================== NESSUN RUN SELEZIONATO ==================== #}
+        {% if not selected_run %}
+        <div class="text-center py-5 mt-5 border border-dashed border-secondary rounded opacity-75">
+            <i class="bi bi-cpu fs-1 text-accent mb-3 d-block"></i>
+            <h4 class="fw-light text-white">Select a Model</h4>
+            <p class="text-muted">
+                Choose an SAE Run to interpret documents from
+                <strong>{{ selected_dataset.name }}</strong>.
+            </p>
+        </div>
+
+        {# ==================== RUN OK, NESSUN DOCUMENTO ==================== #}
+        {% elif not selected_doc %}
+        <div class="d-flex justify-content-between align-items-center mb-4 mt-3">
+            <h5 class="mb-0 text-white">
+                <i class="bi bi-file-earmark-text me-2 text-accent"></i>
+                Select Document
+            </h5>
+
+            <div class="input-group input-group-sm w-auto">
+                <span class="input-group-text bg-dark border-secondary text-muted">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text"
+                       id="docSearch"
+                       class="form-control bg-dark text-white border-secondary"
+                       placeholder="Search text or ID..."
+                       onkeyup="filterDocs()">
+            </div>
+        </div>
+
+        <div class="doc-grid" id="docGrid">
+            {% for doc in documents_list %}
+            <a href="?dataset_id={{ selected_dataset.id }}&run_id={{ selected_run.id }}&doc_id={{ doc.id }}"
+               class="doc-card">
+                <span class="meta">DOC #{{ doc.external_id }}</span>
+                <h6 class="text-truncate">Doc {{ doc.id }}</h6>
+                <p class="text-truncate-3">{{ doc.text|truncatechars:120 }}</p>
+            </a>
+            {% empty %}
+            <div class="col-12 text-center py-5 text-muted">
+                No documents found.
+            </div>
+            {% endfor %}
+        </div>
+
+        {# ==================== RUN + DOCUMENTO SELEZIONATI ==================== #}
+        {% else %}
+
+        <!-- ========================== FEATURES PANEL ========================== -->
+        <div class="features-panel">
+
+            <div class="d-flex justify-content-between align-items-end mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div>
+                        <div class="text-white-50 text-uppercase small fw-bold mb-1"
+                             style="font-size: 0.65rem;">
+                            Active Features
+                        </div>
+                        <h4 class="text-white fw-bold mb-0 font-monospace">
+                            {{ activations|length }}
+                        </h4>
+                    </div>
+
+                    <div class="vr bg-secondary mx-2" style="height: 60px;"></div>
+
+                    <div class="btn-group" role="group">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                id="sortActBtn"
+                                onclick="toggleSort('activation')">
+                            <i class="bi bi-sort-down"></i> Act
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary active"
+                                id="sortIdxBtn"
+                                onclick="toggleSort('index')">
+                            <i class="bi bi-hash"></i> Index
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-3 bg-dark border border-secondary border-opacity-25 px-3 py-2 rounded">
+                    <i class="bi bi-funnel-fill text-accent"></i>
+                    <div>
+                        <label class="form-label text-muted small mb-0 d-block"
+                               style="font-size: 0.6rem;">
+                            MIN ACTIVATION
+                        </label>
+                        <input type="range"
+                               class="form-range"
+                               style="width: 120px;"
+                               min="0"
+                               max="{{ activations.0.activation }}"
+                               step="0.1"
+                               value="0"
+                               oninput="filterThreshold(this.value); document.getElementById('thrVal').innerText=this.value">
+                    </div>
+                    <span class="text-white font-monospace fw-bold" id="thrVal">0.0</span>
+                </div>
+            </div>
+
+            <div class="barcode-container shadow-lg mb-3">
+                <div class="barcode-track" id="barcodeTrack">
+                    {% for feat in activations %}
+                    <a href="{% url 'explorer:feature_detail' selected_run.id feat.index %}"
+                       class="barcode-line"
+                       target="_blank"
+                       style="min-height: 15%;"
+                       data-label="{{ feat.label }}"
+                       data-act="{{ feat.activation|floatformat:2 }}"
+                       data-idx="{{ feat.index }}"
+                       data-act-val="{{ feat.activation }}"
+                       data-desc="{{ feat.description }}"
+                       onmouseover="showTooltip(event, this)"
+                       onmouseout="hideTooltip()">
+                    </a>
+                    {% endfor %}
+                </div>
+
+                <div id="hover-tooltip">
+                    <div class="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-50 pb-1 mb-1">
+                        <span class="text-accent fw-bold font-monospace" id="tt-idx"></span>
+                        <span class="badge bg-white text-dark" id="tt-act"></span>
+                    </div>
+                    <div class="fw-bold text-white small" id="tt-lbl"></div>
+                    <div class="text-white-50 small fst-italic"
+                         style="font-size: 0.7rem;"
+                         id="tt-desc">
+                    </div>
+                    <div class="mt-2 text-end text-accent"
+                         style="font-size: 0.6rem;">
+                        CLICK TO OPEN <i class="bi bi-box-arrow-up-right"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                    Details List
+                </h6>
+
+                <div class="bg-dark border border-secondary border-opacity-25 rounded p-0 overflow-hidden">
+                    <div class="p-2 border-bottom border-secondary border-opacity-25">
+                        <input type="text"
+                               id="featFilter"
+                               class="form-control form-control-sm bg-black text-white border-0"
+                               placeholder="Filter list..."
+                               onkeyup="filterList()">
+                    </div>
+
+                    <div style="max-height: 400px; overflow-y: auto;"
+                         id="featuresListContainer">
+                        {% for feat in activations %}
+                        <a href="{% url 'explorer:feature_detail' selected_run.id feat.index %}"
+                           class="feature-row"
+                           target="_blank"
+                           data-label="{{ feat.label|lower }}"
+                           data-idx="{{ feat.index }}"
+                           data-act-val="{{ feat.activation }}">
+
+                            <div class="text-truncate me-2" style="max-width: 200px;">
+                                <span class="font-monospace text-muted small me-2">
+                                    #{{ feat.index }}
+                                </span>
+                                <span class="text-white small fw-bold"
+                                      title="{{ feat.label }}">
+                                    {{ feat.label }}
+                                </span>
+                            </div>
+
+                            <div class="text-end">
+                                <span class="font-monospace text-accent small">
+                                    {{ feat.activation|floatformat:1 }}
+                                </span>
+                                <i class="bi bi-chevron-right text-muted ms-2"
+                                   style="font-size: 0.7rem;"></i>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+        </div> {# end .features-panel #}
+
+        <!-- ========================== DOCUMENT CONTENT ========================== -->
+        <div class="mt-4">
+            <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                Document Content
+            </h6>
+            <div class="content-box shadow-sm">
+                {{ selected_doc.text|linebreaks }}
+            </div>
+        </div>
+
+        <!-- ========================== SIMILAR DOCUMENTS ========================== -->
+        <div class="mt-4">
+            <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                Similar Documents
+            </h6>
+            <div class="bg-dark border border-secondary border-opacity-25 rounded p-2">
+                {% if similar_docs %}
+                <ul class="list-unstyled mb-0">
+                    {% for item in similar_docs %}
+                    <li class="mb-2 pb-2 border-bottom border-secondary border-opacity-10 last-no-border">
+                        <a href="?dataset_id={{ selected_dataset.id }}&run_id={{ selected_run.id }}&doc_id={{ item.doc.id }}"
+                           class="d-block text-decoration-none text-muted hover-white">
+                            <div class="d-flex justify-content-between small">
+                                <span class="fw-bold text-white">
+                                    #{{ item.doc.external_id }}
+                                </span>
+                                <span class="font-monospace text-accent">
+                                    {{ item.score|floatformat:3 }}
+                                </span>
+                            </div>
+                            <div class="text-truncate small fst-italic opacity-50">
+                                {{ item.doc.text|truncatechars:50 }}
+                            </div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-center py-2 text-muted small fst-italic">
+                    <i class="bi bi-info-circle me-1"></i>
+                    No similar vectors found.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% endif %} {# fine ramo selected_doc #}
+
+        {% else %}
+        {# ==================== NESSUN DATASET SELEZIONATO ==================== #}
+        <div class="text-center py-5 mt-5">
+            <i class="bi bi-database fs-1 text-muted opacity-25 mb-3 d-block"></i>
+            <h3 class="fw-light text-white">Start Analysis</h3>
+            <p class="text-muted">
+                Select a <strong>Dataset</strong> to begin.
+            </p>
+        </div>
+        {% endif %}
+
+    </div> {# /container-fluid #}
+
+</div> {# /analyzer-wrapper #}
+
+
+<!-- ========================== JAVASCRIPT ========================== -->
+<script>
+
+    // 1. FILTER DOCS (search in document list)
+    function filterDocs() {
+        const query = document.getElementById('docSearch').value.toLowerCase();
+        document.querySelectorAll('.doc-card').forEach(card => {
+            const txt = card.innerText.toLowerCase();
+            card.style.display = txt.includes(query) ? 'block' : 'none';
+        });
+    }
+
+    // 2. THRESHOLD FILTER (show/hide bars + rows)
+    function filterThreshold(val) {
+        const threshold = parseFloat(val);
+        const bars = document.querySelectorAll('.barcode-line');
+        const rows = document.querySelectorAll('.feature-row');
+
+        bars.forEach(el => {
+            const act = parseFloat(el.dataset.actVal);
+            if (act >= threshold) {
+                el.classList.remove('dimmed');
+            } else {
+                el.classList.add('dimmed');
+            }
+        });
+
+        rows.forEach(el => {
+            const act = parseFloat(el.dataset.actVal);
+            el.style.display = act >= threshold ? 'flex' : 'none';
+        });
+    }
+
+    // 3. TEXT FILTER (search in features list)
+    function filterList() {
+        const query = document.getElementById('featFilter').value.toLowerCase();
+        document.querySelectorAll('.feature-row').forEach(row => {
+            const label = row.dataset.label;
+            row.style.display = label.includes(query) ? 'flex' : 'none';
+        });
+    }
+
+    // 4. SORT (sorting barcode + features list)
+    function toggleSort(mode) {
+        document.getElementById('sortActBtn').classList.toggle('active', mode === 'activation');
+        document.getElementById('sortIdxBtn').classList.toggle('active', mode === 'index');
+
+        const barContainer = document.getElementById('barcodeTrack');
+        const listContainer = document.getElementById('featuresListContainer');
+        if (!barContainer || !listContainer) return;
+
+        const bars = Array.from(barContainer.children);
+        const rows = Array.from(listContainer.children);
+
+        const sorter = (a, b) => {
+            if (mode === 'activation')
+                return parseFloat(b.dataset.actVal) - parseFloat(a.dataset.actVal);
+            if (mode === 'index')
+                return parseInt(a.dataset.idx) - parseInt(b.dataset.idx);
+        };
+
+        bars.sort(sorter).forEach(el => barContainer.appendChild(el));
+        rows.sort(sorter).forEach(el => listContainer.appendChild(el));
+    }
+
+    // 5. TOOLTIP
+    const tooltip = document.getElementById('hover-tooltip');
+
+    function showTooltip(e, el) {
+        if (!tooltip) return;
+        tooltip.style.opacity = 1;
+
+        const rect = el.getBoundingClientRect();
+        tooltip.style.left = (rect.left + rect.width / 2 - 130) + 'px';
+        tooltip.style.top = (rect.top + 30) + 'px';
+
+        document.getElementById('tt-lbl').innerText = el.dataset.label;
+        document.getElementById('tt-act').innerText = el.dataset.act;
+        document.getElementById('tt-desc').innerText = el.dataset.desc;
+        document.getElementById('tt-idx').innerText = '#' + el.dataset.idx;
+    }
+
+    function hideTooltip() {
+        if (!tooltip) return;
+        tooltip.style.opacity = 0;
+    }
+
+    // 6. INIT (on page load)
+    document.addEventListener('DOMContentLoaded', function () {
+
+        // Default sort → index
+        if (document.getElementById('barcodeTrack'))
+            toggleSort('index');
+
+        const bars = document.querySelectorAll('.barcode-line');
+        if (!bars.length) return;
+
+        const max = Math.max(...Array.from(bars)
+            .map(b => parseFloat(b.dataset.actVal) || 0)
+        );
+
+        if (!max || max <= 0) return;
+
+        // Initial threshold = 20% of maximum
+        const initialThreshold = max * 0.20;
+
+        const rangeInput = document.querySelector('input[type="range"]');
+        const thrLabel = document.getElementById('thrVal');
+
+        if (rangeInput) {
+            rangeInput.max = max.toFixed(2);  // align slider max to real max
+            rangeInput.value = initialThreshold.toFixed(2);
+            thrLabel.innerText = initialThreshold.toFixed(2);
+            filterThreshold(initialThreshold);
+        }
+
+        // Scale bars + animate
+        bars.forEach((b, idx) => {
+            const v = parseFloat(b.dataset.actVal) || 0;
+            const h = (v / max) * 100;
+            b.style.height = h + "%";
+            b.style.setProperty('--delay', (idx * 0.02) + 's');
+            b.classList.add('animated-bar');
+        });
+    });
+</script>
+
+{% endblock %}

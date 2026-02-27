@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Datasets · Sparsifire{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-end mb-4">
+  <div>
+
+    <h1 class="h3 mb-0">Your Datasets</h1>
+  </div>
+  <a href="{% url 'embeddings:upload_dataset' %}" class="btn-accent shadow-sm">
+    <i class="bi bi-plus-lg me-1"></i> New Dataset
+  </a>
+</div>
+
+<p class="text-muted small mb-4">
+  Manage your text datasets here. Upload new documents, track embedding progress, and view details for each dataset.
+</p>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+  {% for ds in datasets %}
+  <div class="col">
+    <div class="card h-100 bg-dark border-secondary border-opacity-25 shadow-sm hover-card">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div class="rounded bg-dark p-2 border border-secondary border-opacity-25 text-center"
+            style="width: 48px; height: 48px;">
+            <i class="bi bi-stack text-accent fs-4"></i>
+          </div>
+          <span class="badge bg-dark border border-secondary border-opacity-25 text-muted fw-normal text-truncate"
+            style="max-width: 150px;" title="{{ ds.get_model_name_display }}">
+            <i class="bi bi-cpu me-1"></i> {{ ds.get_model_name_display }}
+          </span>
+        </div>
+
+        <h5 class="card-title text-white mb-1 text-truncate">{{ ds.name }}</h5>
+        <p class="card-text text-muted small mb-3">{{ ds.total_docs }} documents</p>
+
+        <div class="mt-auto">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="small text-muted">Progress</span>
+            <span class="small text-white fw-bold">{{ ds.progress_percent }}%</span>
+          </div>
+          <div class="progress" style="height: 6px; background: #333;">
+            <div class="progress-bar {% if ds.progress_percent == 100 %}bg-success{% else %}bg-warning{% endif %}"
+              role="progressbar" style="width: {{ ds.progress_percent }}%"></div>
+          </div>
+          {% if ds.error_docs > 0 %}
+          <div class="mt-2 small text-danger">
+            <i class="bi bi-exclamation-circle me-1"></i> {{ ds.error_docs }} errors
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer bg-transparent border-top border-secondary border-opacity-25 py-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <small class="text-muted font-monospace" style="font-size: 0.7rem;">
+            {{ ds.created_at|date:"d M Y" }}
+          </small>
+          <a href="{% url 'embeddings:dataset_detail' ds.pk %}" class="btn btn-sm btn-outline-secondary text-uppercase"
+            style="font-size: 0.7rem; letter-spacing: 1px;">
+            View Details <i class="bi bi-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="text-center py-5 border border-dashed border-secondary rounded"
+      style="background: rgba(255,255,255,0.01);">
+      <div class="mb-3 text-muted opacity-25">
+        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+      </div>
+      <p class="text-muted mb-3">You haven't uploaded any datasets yet.</p>
+      <a href="{% url 'embeddings:upload_dataset' %}" class="btn-ghost">Upload your first file</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<style>
+  .hover-card {
+    transition: transform 0.2s, border-color 0.2s;
+  }
+
+  .hover-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent) !important;
+  }
+</style>
+{% endblock %}

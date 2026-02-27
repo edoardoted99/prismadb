@@ -1,0 +1,31 @@
+<div class="snippet-item">
+    <div class="snippet-header">
+        <div class="snippet-meta">
+            <span class="text-white fw-bold small snippet-doc-id">
+                <i class="bi bi-file-text me-2 text-muted"></i>
+                DOC #{{ doc.external_id|default:doc.id }}
+            </span>
+
+            <a href="{% url 'explorer:document_analyzer' %}?dataset_id={{ run.dataset.id }}&run_id={{ run.id }}&doc_id={{ doc.id }}"
+                class="btn btn-sm btn-outline-accent py-0 px-2 d-flex align-items-center gap-2 shadow-sm"
+                style="font-size: 0.7rem; border-radius: 4px;" target="_blank" title="Open in Document Analyzer">
+                <i class="bi bi-activity"></i> ANALYZE
+            </a>
+        </div>
+        <span class="font-monospace text-accent small fw-bold">
+            ACT: {{ doc.act|floatformat:4 }}
+        </span>
+    </div>
+
+    <div class="snippet-text" data-bs-toggle="modal" data-bs-target="#textModal" data-fulltext="{{ doc.text }}"
+        data-docid="{{ doc.id }}">
+        {{ doc.text|truncatechars:350 }}
+    </div>
+
+    {% if feature.max_activation %}
+    <div class="activation-progress" title="Activation vs global peak for this feature">
+        {% widthratio doc.act feature.max_activation 100 as act_pct %}
+        <div class="activation-progress-bar" style="width: {{ act_pct }}%;"></div>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,478 @@
+{% load static %}
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PRISMΔ{% endblock %}</title>
+
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}?v=1">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+
+      /* Unified Theme Colors - PRISM△ */
+      /* Elegant AI Gradient: Blue -> Violet -> Pink -> Orange */
+      --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 40%, #d946ef 70%, #f97316 100%);
+      --gradient-text: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
+
+      /* Primary accent color (fallback and solid uses) - A nice violet */
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-dim: rgba(139, 92, 246, 0.1);
+
+      --bg: #09090b;
+      --bg-card: #18181b;
+      /* Slightly lighter than pure black */
+      --bg-subtle: #27272a;
+
+      --text-main: #f4f4f5;
+      --text-muted: #a1a1aa;
+
+      --border: #3f3f46;
+
+      --font-main: 'Inter', system-ui, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font-main);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .brand-prism-hero {
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+      /* Glow effect */
+      filter: drop-shadow(0 0 30px rgba(139, 92, 246, 0.4));
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    a:hover {
+      color: var(--accent-hover);
+    }
+
+    /* Navbar */
+    header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 0.8rem 0;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+      /* Effetto vetro */
+    }
+
+    .navbar-brand {
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: var(--text-main);
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .brand-prism {
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 800;
+      font-size: 1.6rem;
+      /* Ensure the triangle is visible */
+      display: inline-block;
+    }
+
+    .nav-link-custom {
+      color: var(--text-muted);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      /* Flex ensures icon and text align perfectly */
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.2s;
+    }
+
+    .nav-link-custom:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    /* Active state logic: controlla se la path contiene il segmento */
+    .nav-link-custom.active {
+      background: var(--accent-dim);
+      color: #c4b5fd;
+      /* Light violet */
+      border: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    /* Fix for Dropdown Toggle Caret Spacing */
+    .dropdown-toggle::after {
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+
+    /* Dropdown Custom Styles for Dark Theme */
+    .dropdown-menu-custom {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      /* Spacing from navbar */
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .dropdown-item {
+      color: var(--text-muted);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      padding: 0.5rem 1rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .dropdown-item:hover,
+    .dropdown-item:focus {
+      background-color: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    /* Active item color if needed */
+    .dropdown-item.active,
+    .dropdown-item:active {
+      background-color: var(--accent-dim);
+      color: #c4b5fd;
+    }
+
+    /* Custom Divider */
+    .dropdown-divider {
+      border-top: 1px solid var(--border);
+      opacity: 1;
+    }
+
+    /* Layout */
+    .container-root {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* Buttons */
+    .btn-accent {
+      /* Gradient Outline */
+      background: linear-gradient(var(--bg), var(--bg)) padding-box,
+        var(--gradient-primary) border-box;
+      color: #fff;
+      font-weight: 600;
+      border: 1px solid transparent;
+      padding: 0.5rem 1.2rem;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-accent:hover {
+      /* Fill on hover */
+      background: var(--gradient-primary) border-box;
+      opacity: 1;
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 0.5rem 1.2rem;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--text-muted);
+    }
+
+    .btn-outline-accent {
+      color: #c4b5fd;
+      border: 1px solid var(--accent);
+      background: transparent;
+      padding: 0.5rem 1.2rem;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-outline-accent:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* Cards */
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Stats Card */
+    .stat-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Tables */
+    .table-custom {
+      --bs-table-bg: transparent;
+      color: var(--text-muted);
+    }
+
+    .table-custom th {
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+      color: var(--text-main);
+      padding-bottom: 1rem;
+    }
+
+    .table-custom td {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      vertical-align: middle;
+      padding: 1rem 0.5rem;
+    }
+
+    .table-custom tr:last-child td {
+      border-bottom: 0;
+    }
+
+    /* Status Badges */
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-done {
+      color: #4ade80;
+    }
+
+    .status-done .badge-dot {
+      background: #4ade80;
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+    }
+
+    .status-pending {
+      color: #fbbf24;
+    }
+
+    .status-pending .badge-dot {
+      background: #fbbf24;
+    }
+
+    .status-error {
+      color: #f87171;
+    }
+
+    .status-error .badge-dot {
+      background: #f87171;
+    }
+
+    /* Forms */
+    .form-control,
+    .form-select {
+      background: var(--bg-subtle) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-main) !important;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+      border-color: var(--accent) !important;
+    }
+
+    /* Utilities */
+    .ls-1 {
+      letter-spacing: 1px;
+    }
+
+    .font-mono {
+      font-family: var(--font-mono) !important;
+    }
+
+    .text-accent {
+      color: var(--accent) !important;
+    }
+
+    .bg-accent {
+      background-color: var(--accent) !important;
+      color: #fff;
+    }
+
+    .border-accent {
+      border-color: var(--accent) !important;
+    }
+
+    /* Code Block */
+    pre.code-block {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      color: #a5a5a5;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+  <header>
+    <div class="container-root py-0 d-flex justify-content-between align-items-center">
+      <a class="navbar-brand" href="/">
+        PRISM<span class="brand-prism-hero">Δ</span>
+      </a>
+      <nav class="d-flex gap-2">
+        <a href="{% url 'explorer:system_status' %}"
+          class="nav-link-custom {% if 'system_status' in request.path %}active{% endif %}">
+          <i class="bi bi-activity"></i> Status
+        </a>
+
+        <a href="{% url 'embeddings:dataset_list' %}"
+          class="nav-link-custom {% if 'embeddings' in request.path %}active{% endif %}">
+          <i class="bi bi-database"></i> Embeddings
+        </a>
+
+        <a href="{% url 'sae:run_list' %}" class="nav-link-custom {% if 'sae' in request.path %}active{% endif %}">
+          <i class="bi bi-cpu"></i> Training
+        </a>
+
+        <div class="dropdown d-flex align-items-center">
+          <a href="#" class="nav-link-custom dropdown-toggle {% if 'explorer' in request.path %}active{% endif %}"
+            id="explorerDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-compass"></i> Explorer
+          </a>
+
+          <ul class="dropdown-menu dropdown-menu-custom" aria-labelledby="explorerDropdown">
+            <li>
+              <a class="dropdown-item" href="{% url 'explorer:start_interpretation' %}">
+                <i class="bi bi-play-circle me-2"></i>New Interpretation
+              </a>
+            </li>
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+
+            <li>
+              <h6 class="dropdown-header text-uppercase small fw-bold text-muted" style="font-size: 0.65rem;">
+                Exploration</h6>
+            </li>
+
+            <li>
+              <a class="dropdown-item" href="{% url 'explorer:index' %}">
+                <i class="bi bi-grid me-2"></i>Features
+              </a>
+            </li>
+
+            {% if request.resolver_match.kwargs.run_id %}
+            <li>
+              <a class="dropdown-item" href="{% url 'explorer:family_list' request.resolver_match.kwargs.run_id %}">
+                <i class="bi bi-diagram-3 me-2"></i>Feature Families
+              </a>
+            </li>
+            {% else %}
+            <li>
+              <a class="dropdown-item disabled" href="#" aria-disabled="true"
+                title="Select a Run first to view Feature Families" style="cursor: not-allowed; opacity: 0.5;">
+                <i class="bi bi-diagram-3 me-2"></i>Feature Families
+              </a>
+            </li>
+            {% endif %}
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+
+            <li>
+              <a class="dropdown-item" href="{% url 'explorer:document_analyzer' %}">
+                <i class="bi bi-file-earmark-text me-2"></i>Document Analyzer
+              </a>
+            </li>
+
+            <li>
+              <a class="dropdown-item" href="{% url 'explorer:inference' %}">
+                <i class="bi bi-magic me-2"></i>Inference
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container-root">
+    <!-- Flash Messages -->
+    {% if messages %}
+    <div class="container mt-3">
+      {% for message in messages %}
+      <div
+        class="alert alert-{{ message.tags }} alert-dismissible fade show bg-dark text-white border border-secondary shadow-sm"
+        role="alert">
+        {{ message|safe }}
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+
+</html>

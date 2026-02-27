@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dataset.name }} · Sparsifire{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1">
+        <li class="breadcrumb-item"><a href="{% url 'embeddings:dataset_list' %}" class="text-muted">Datasets</a></li>
+        <li class="breadcrumb-item active text-accent" aria-current="page">{{ dataset.name }}</li>
+      </ol>
+    </nav>
+    <h1 class="h3 mb-2">{{ dataset.name }}</h1>
+    <p class="text-muted mb-0" style="max-width: 600px;">
+      {{ dataset.description|default:"No description provided." }}
+    </p>
+  </div>
+  
+
+
+      
+<div class="d-flex gap-2">
+    {% if dataset.progress_percent < 100 %}
+    <a href="{% url 'embeddings:start_generation' dataset.pk %}" class="btn btn-accent">
+      <i class="bi bi-play-fill"></i> Generate Embeddings
+    </a>
+    {% endif %}
+
+    <!-- Refresh Button -->
+    <button class="btn btn-ghost" onclick="location.reload()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+
+    <div class="dropdown">
+  <button class="btn btn-ghost dropdown-toggle" type="button" data-bs-toggle="dropdown">
+    <i class="bi bi-gear"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-dark shadow">
+    <li>
+        <form action="{% url 'embeddings:delete_dataset' dataset.pk %}" method="POST" onsubmit="return confirm('Are you sure? This will delete all documents and embeddings.');">
+            {% csrf_token %}
+            <button type="submit" class="dropdown-item text-danger">
+                <i class="bi bi-trash me-2"></i> Delete Dataset
+            </button>
+        </form>
+    </li>
+  </ul>
+</div>
+</div>
+</div>
+
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="stat-card h-100">
+      <span class="stat-label">Total Documents</span>
+      <span class="stat-value mt-2">{{ dataset.total_docs }}</span>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card h-100 border-success border-opacity-25">
+      <span class="stat-label text-success">Completed</span>
+      <span class="stat-value mt-2">{{ dataset.done_docs }}</span>
+      <div class="progress mt-auto" style="height: 4px;">
+        <div class="progress-bar bg-success" role="progressbar" style="width: {{ dataset.progress_percent }}%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card h-100 border-opacity-25">
+      <span class="stat-label">Queued</span>
+      <span class="stat-value mt-2">{{ dataset.pending_docs }}</span>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="stat-card h-100 {% if dataset.error_docs > 0 %}border-danger border-opacity-50{% endif %}">
+      <span class="stat-label {% if dataset.error_docs > 0 %}text-danger{% endif %}">Errors</span>
+      <span class="stat-value mt-2">{{ dataset.error_docs }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Docs Table -->
+<div class="panel p-0">
+  <div class="px-4 py-3 border-bottom border-secondary border-opacity-10 d-flex justify-content-between align-items-center">
+    <h5 class="h6 mb-0">Documents</h5>
+    <span class="badge bg-dark border border-secondary border-opacity-25 text-muted fw-normal">
+      Model: {{ dataset.get_model_name_display }}
+    </span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-custom mb-0">
+      <thead>
+        <tr>
+          <th class="ps-4">External ID</th>
+          <th>Status</th>
+          <th>Text Preview</th>
+          <th class="text-end pe-4">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in page_obj %}
+        <tr>
+          <td class="ps-4 font-monospace text-accent small">
+            <a href="{% url 'embeddings:document_detail' doc.pk %}">#{{ doc.external_id|truncatechars:15 }}</a>
+          </td>
+          <td>
+            {% if doc.status == 'done' %}
+              <span class="status-done small fw-medium"><span class="badge-dot"></span>Ready</span>
+            {% elif doc.status == 'error' %}
+              <span class="status-error small fw-medium"><span class="badge-dot"></span>Error</span>
+            {% else %}
+              <span class="status-pending small fw-medium"><span class="badge-dot"></span>Pending</span>
+            {% endif %}
+          </td>
+          <td class="text-muted text-truncate" style="max-width: 400px;">
+            {{ doc.text|truncatechars:120 }}
+          </td>
+          <td class="text-end pe-4">
+            <a href="{% url 'embeddings:document_detail' doc.pk %}" class="btn btn-sm btn-ghost border-0 text-muted">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="4" class="text-center p-4 text-muted">No documents found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination (simplified) -->
+  {% if page_obj.has_other_pages %}
+  <div class="p-3 border-top border-secondary border-opacity-10 d-flex justify-content-center">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link bg-dark border-secondary border-opacity-25 text-muted" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link bg-transparent border-0 text-muted">Page {{ page_obj.number }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link bg-dark border-secondary border-opacity-25 text-muted" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

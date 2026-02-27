@@ -1,0 +1,788 @@
+{% extends "base.html" %}
+
+{% block title %}{{ current_interp.label|default:feature.label|default:"Feature Detail" }} · Run #{{ run.id }}{%endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+    /* —— Stats Popover —— */
+    .stats-popover {
+        position: absolute;
+        margin-top: 6px;
+        right: 1.25rem;
+        background: rgba(20, 20, 20, 0.97);
+        border: 1px solid var(--border);
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        width: 260px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-5px);
+        transition: all 0.15s ease-in-out;
+        z-index: 2000;
+    }
+
+    .stats-popover.open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+    }
+
+    .stats-popover-content {
+        color: var(--text-main);
+        font-size: 0.78rem;
+        line-height: 1.4;
+    }
+
+    /* --- LAYOUT GRID --- */
+    .analyst-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+        align-items: flex-start;
+    }
+
+    @media (max-width: 992px) {
+        .analyst-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .main-column,
+    .side-column {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    /* --- PANEL OVERRIDES --- */
+    .panel-header {
+        padding: 0 0 1rem 0;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: transparent;
+    }
+
+    .panel-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #888;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .panel-body {
+        padding: 0;
+        margin-top: 0.5rem;
+    }
+
+    /* --- INTERPRETATION (HERO) --- */
+    .interp-container {
+        border-left: 4px solid var(--accent);
+        background: linear-gradient(90deg, var(--accent-dim) 0%, transparent 100%);
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 0.5rem;
+        border-radius: 0 12px 12px 0;
+    }
+
+    /* --- SNIPPET ITEM --- */
+    .snippet-item {
+        border-bottom: 1px solid var(--border);
+        padding: 1.2rem 0;
+        transition: background 0.15s;
+    }
+
+    .snippet-item:last-child {
+        border-bottom: none;
+    }
+
+    .snippet-item:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .snippet-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.8rem;
+        gap: 0.75rem;
+    }
+
+    .snippet-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .snippet-doc-id {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+
+    .snippet-text {
+        font-family: 'Fira Code', monospace;
+        font-size: 0.85rem;
+        color: #ccc;
+        line-height: 1.6;
+        padding: 0.8rem;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        cursor: zoom-in;
+    }
+
+    .snippet-text:hover {
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* --- DOC ACTIVATION PROGRESS --- */
+    .activation-progress {
+        height: 4px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 0.4rem;
+    }
+
+    .activation-progress-bar {
+        height: 100%;
+        background: var(--accent);
+    }
+
+    /* --- STATS GRID --- */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background-color: var(--border);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+
+    .stat-cell {
+        background-color: var(--bg-card);
+        padding: 0.9rem 1rem;
+        text-align: center;
+    }
+
+    .stat-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        color: #666;
+        margin-bottom: 0.2rem;
+    }
+
+    .stat-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #eee;
+        font-family: 'Fira Code', monospace;
+    }
+
+    /* --- HISTOGRAM --- */
+    .hist-bars {
+        display: flex;
+        align-items: flex-end;
+        height: 120px;
+        gap: 2px;
+        margin-top: 0.75rem;
+        padding: 0.25rem 0;
+    }
+
+    .hist-bar {
+        flex: 1;
+        background-color: var(--accent);
+        opacity: 0.45;
+        transition: opacity 0.15s, transform 0.15s;
+        border-radius: 2px 2px 0 0;
+        cursor: pointer;
+    }
+
+    .hist-bar:hover {
+        opacity: 1;
+        transform: translateY(-3px);
+    }
+
+    /* Tooltip istogramma – stile allineato a hoverlabel Plotly */
+    #hist-tooltip {
+        position: fixed;
+        pointer-events: none;
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.7rem;
+        color: #eee;
+        opacity: 0;
+        transition: opacity 0.1s;
+        z-index: 9999;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+        font-family: var(--font-mono);
+        white-space: nowrap;
+    }
+
+    /* --- LISTS --- */
+    .tech-list-group {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .tech-list-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.7rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 0.85rem;
+    }
+
+    .tech-list-item:last-child {
+        border-bottom: none;
+    }
+
+    .link-primary {
+        color: #ddd;
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+
+    .link-primary:hover {
+        color: var(--accent);
+    }
+
+    .val-mono {
+        font-family: 'Fira Code', monospace;
+        font-size: 0.75rem;
+        color: #666;
+    }
+
+    .btn-outline-accent {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: transparent;
+    }
+
+    .btn-outline-accent:hover {
+        background: var(--accent);
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div
+    class="d-flex justify-content-between align-items-center mb-4 border-bottom border-secondary border-opacity-10 pb-3">
+    <div>
+        <nav aria-label="breadcrumb" class="mb-1">
+            <a href="{% url 'explorer:feature_list' run.id %}" class="text-muted text-decoration-none small"
+                style="font-size: 0.75rem;">
+                <i class="bi bi-chevron-left"></i> RUN #{{ run.id }}
+            </a>
+        </nav>
+        <div class="mb-2">
+            <span class="badge bg-dark border border-secondary text-muted font-monospace" style="font-size: 0.65rem;">
+                <i class="bi bi-cpu me-1"></i> SAE MODEL #{{ run.id }}
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <h1 class="h3 mb-0 text-white fw-bold font-monospace">
+                FEATURE <span class="text-accent">{{ feature.feature_index }}</span>
+            </h1>
+            {% if feature.label %}
+            <span class="text-muted fw-light fs-4">/ {{ feature.label }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+    <a href="{% url 'explorer:calculate_stats' run.id %}?next={{ request.path }}"
+        class="btn btn-outline-secondary btn-sm text-uppercase fw-bold"
+        style="font-size: 0.7rem; letter-spacing: 1px;">
+        <i class="bi bi-arrow-clockwise me-2"></i> Refresh Stats</a>
+    <button class="btn btn-accent btn-sm text-uppercase fw-bold shadow-sm"
+        style="font-size: 0.7rem; letter-spacing: 1px;" data-bs-toggle="modal" data-bs-target="#reinterpretModal">
+        <i class="bi bi-terminal me-2"></i> Re-Interpret
+    </button>
+</div>
+</div>
+
+<p class="text-muted small mb-4">
+    This page shows the detailed analysis of a specific feature in the Sparse Autoencoder (SAE).
+    It includes the semantic interpretation generated by the LLM, the top activating documents that trigger this
+    feature, and statistical metrics like density and activation distribution.
+</p>
+
+<div class="analyst-grid">
+
+    <!-- COLONNA SINISTRA: INTERPRETATION + STATS + DOCUMENTS -->
+    <div class="main-column">
+
+        <!-- SEMANTIC INTERPRETATION -->
+        <div class="panel">
+            <div class="interp-container">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="text-accent text-uppercase fw-bold small mb-0">Semantic Interpretation</h6>
+                    {% if current_interp %}
+                    <span class="badge bg-dark border border-secondary text-accent font-monospace"
+                        style="font-size: 0.7rem;">
+                        <i class="bi bi-robot me-1"></i> {{ current_interp.llm_model }} <span
+                            class="text-muted ms-1">#{{ current_interp.id }}</span>
+                    </span>
+                    {% endif %}
+                </div>
+                <p class="text-white fs-5 lh-base mb-0 fw-light">
+                    {{ current_interp.description|default:feature.description|default:"No interpretation available." }}
+                </p>
+            </div>
+        </div>
+
+        <!-- STATISTICS & DISTRIBUTION -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title d-flex align-items-center gap-2">
+                    <i class="bi bi-bar-chart"></i>
+                    STATISTICS & DISTRIBUTION
+                    <button id="stats-info-btn" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        style="font-size: 0.65rem; border-radius:4px;">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </span>
+            </div>
+
+            <!-- POPOVER -->
+            <div id="stats-info-popover" class="stats-popover">
+                <div class="stats-popover-content">
+                    <h6 class="mb-2 text-accent">Statistics Explained</h6>
+
+                    <p class="small mb-1">
+                        <strong>Density</strong><br>
+                        Fraction of documents where this feature activates at least once.<br>
+                        Higher density = feature appears frequently across the dataset.
+                    </p>
+
+                    <p class="small mb-1">
+                        <strong>Peak Activation</strong><br>
+                        Maximum activation value observed for this feature over all documents.
+                    </p>
+
+                    <p class="small mb-0">
+                        <strong>Activation Histogram</strong><br>
+                        Distribution of all activation values for this feature. Each bar represents
+                        a bin (range) of values, and its height shows how many documents fall in that range.
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-body">
+                <div class="stats-grid">
+                    <div class="stat-cell">
+                        <div class="stat-label">Density</div>
+                        <div class="stat-value text-accent">{{ feature.density|floatformat:5 }}</div>
+                    </div>
+                    <div class="stat-cell">
+                        <div class="stat-label">Peak Act</div>
+                        <div class="stat-value">{{ feature.max_activation|floatformat:2 }}</div>
+                    </div>
+                </div>
+
+                {% if feature.activation_histogram.counts %}
+                <div class="hist-bars" id="activation-histogram">
+                    {% for count in feature.activation_histogram.counts %}
+                    {% widthratio count max_hist_count 100 as height_pct %}
+                    <div class="hist-bar" data-count="{{ count }}" style="height: {{ height_pct }}%;"></div>
+                    {% endfor %}
+                </div>
+                <div class="d-flex justify-content-between text-muted mt-1 font-monospace" style="font-size: 0.6rem;">
+                    <span>0.0</span>
+                    <span>Max</span>
+                </div>
+                {% endif %}
+
+                <!-- SCATTER PLOT CONTAINER -->
+                <div class="mt-4 pt-3 border-top border-secondary border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="text-uppercase fw-bold small text-muted mb-0">
+                            <i class="bi bi-scatter-chart me-1"></i> Global Context
+                        </h6>
+                    </div>
+                    <div id="scatter-plot" style="width: 100%; height: 250px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DOCUMENTI NELLA PRIMA COLONNA -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">
+                    <i class="bi bi-file-earmark-text"></i> TOP ACTIVATING CONTEXTS
+                </span>
+            </div>
+            <div class="panel-body pt-0">
+                <!-- TOP ACTIVATING CONTEXTS -->
+                <div id="examples-container">
+                    {% for doc in feature.example_docs %}
+                    <div class="snippet-item {% if forloop.counter > 5 %}d-none{% endif %}"
+                        data-index="{{ forloop.counter0 }}">
+                        <div class="snippet-header">
+                            <div class="snippet-meta">
+                                <span class="text-white fw-bold small snippet-doc-id">
+                                    <i class="bi bi-file-text me-2 text-muted"></i>
+                                    DOC #{{ doc.external_id|default:doc.id }}
+                                </span>
+
+                                <a href="{% url 'explorer:document_analyzer' %}?dataset_id={{ run.dataset.id }}&run_id={{ run.id }}&doc_id={{ doc.id }}"
+                                    class="btn btn-sm btn-outline-accent py-0 px-2 d-flex align-items-center gap-2 shadow-sm"
+                                    style="font-size: 0.7rem; border-radius: 4px;" target="_blank"
+                                    title="Open in Document Analyzer">
+                                    <i class="bi bi-activity"></i> ANALYZE
+                                </a>
+                            </div>
+                            <span class="font-monospace text-accent small fw-bold">
+                                ACT: {{ doc.act|floatformat:4 }}
+                            </span>
+                        </div>
+
+                        <div class="snippet-text" data-bs-toggle="modal" data-bs-target="#textModal"
+                            data-fulltext="{{ doc.text }}" data-docid="{{ doc.id }}">
+                            {{ doc.text|truncatechars:350 }}
+                        </div>
+
+                        {% if feature.max_activation %}
+                        <div class="activation-progress" title="Activation vs global peak for this feature">
+                            {% widthratio doc.act feature.max_activation 100 as act_pct %}
+                            <div class="activation-progress-bar" style="width: {{ act_pct }}%;"></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-5 text-muted fst-italic">
+                        No cached examples found. Please scan the dataset.
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if feature.example_docs|length > 5 %}
+                <div class="text-center mt-3">
+                    <button id="load-more-btn" class="btn btn-sm btn-outline-secondary w-100">
+                        <i class="bi bi-chevron-down me-2"></i> Load More Examples
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- COLONNA DESTRA: TOPOLOGY + CORRELATIONS -->
+    <div class="side-column">
+
+        {% if feature.family_parent.exists or feature.family_children.exists %}
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">
+                    <i class="bi bi-diagram-3"></i> TOPOLOGY
+                </span>
+                <a href="{% url 'explorer:family_list' run.id %}" class="text-muted hover-white small">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+            </div>
+            <div class="panel-body">
+                <ul class="tech-list-group px-1">
+                    {% for family in feature.family_parent.all %}
+                    <li class="tech-list-item flex-column align-items-start">
+                        <div class="mb-2 text-accent small fw-bold">
+                            <i class="bi bi-diagram-3-fill me-1"></i> ROOT OF FAMILY #{{ family.id }}
+                        </div>
+                        <div class="w-100 ps-3 border-start border-secondary border-opacity-25">
+                            {% for child in family.children_features.all|slice:":5" %}
+                            <div class="d-flex justify-content-between py-1">
+                                <a href="{% url 'explorer:feature_detail' run.id child.feature_index %}"
+                                    class="link-primary small">
+                                    {{ child.label|default:"Unknown" }}
+                                </a>
+                                <span class="val-mono">#{{ child.feature_index }}</span>
+                            </div>
+                            {% endfor %}
+                            {% if family.children_features.count > 5 %}
+                            <div class="text-muted small mt-1 fst-italic">
+                                + {{ family.children_features.count|add:"-5" }} others
+                            </div>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+
+                    {% for family in feature.family_children.all %}
+                    <li class="tech-list-item">
+                        <div>
+                            <i class="bi bi-arrow-return-right accent-icon"></i>
+                            <span class="text-muted small me-1">Child of</span>
+                            <a href="{% url 'explorer:feature_detail' run.id family.parent_feature.feature_index %}"
+                                class="link-primary fw-bold">
+                                {{ family.parent_feature.label }}
+                            </a>
+                        </div>
+                        <span class="val-mono">#{{ family.parent_feature.feature_index }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title"><i class="bi bi-share"></i> CORRELATIONS</span>
+            </div>
+
+            <div class="panel-body">
+                <div class="px-1 pt-1 pb-1 text-muted small">
+                    <strong>W – Weight-space</strong> · similarity between decoder vectors
+                    (features that point in similar directions in the embedding space).
+                </div>
+                <ul class="tech-list-group px-1" id="corr-w">
+                    {% for item in feature.correlated_features|slice:":6" %}
+                    <li class="tech-list-item">
+                        <a href="{% url 'explorer:feature_detail' run.id item.index %}" class="link-primary">
+                            {{ item.label }}
+                        </a>
+                        <span class="val-mono">{{ item.score|floatformat:2 }}</span>
+                    </li>
+                    {% empty %}
+                    <li class="p-3 text-center text-muted small">No weight-space correlations.</li>
+                    {% endfor %}
+                </ul>
+
+                <div class="px-1 pt-3 pb-1 mt-2 text-muted small border-top border-secondary border-opacity-25">
+                    <strong>D – Data / co-activation</strong> · features that tend to fire together on the same
+                    documents (co-occurrence in the dataset).
+                </div>
+                <ul class="tech-list-group px-1" id="corr-d">
+                    {% for item in feature.co_occurring_features|slice:":6" %}
+                    <li class="tech-list-item">
+                        <a href="{% url 'explorer:feature_detail' run.id item.index %}" class="link-primary">
+                            {{ item.label }}
+                        </a>
+                        <span class="val-mono text-accent">{{ item.score|floatformat:2 }}</span>
+                    </li>
+                    {% empty %}
+                    <li class="p-3 text-center text-muted small">No data co-occurrence.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% include "explorer/includes/modals.html" %}
+
+{{ scatter_data|json_script:"scatter-data-json" }}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // POPUP EXPLAINER FOR STATISTICS PANEL
+    const statsBtn = document.getElementById('stats-info-btn');
+    const popover = document.getElementById('stats-info-popover');
+
+    if (statsBtn && popover) {
+        statsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popover.classList.toggle('open');
+        });
+
+        // click outside to close
+        document.addEventListener('click', function (e) {
+            if (!popover.contains(e.target) && e.target !== statsBtn) {
+                popover.classList.remove('open');
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const bars = document.querySelectorAll('.hist-bar');
+
+        if (bars.length > 0) {
+            // Totale valori istogramma
+            let totalCount = 0;
+            bars.forEach(bar => {
+                const c = parseInt(bar.dataset.count || '0', 10);
+                if (!isNaN(c)) totalCount += c;
+            });
+
+            // Tooltip element
+            let tooltip = document.getElementById('hist-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'hist-tooltip';
+                document.body.appendChild(tooltip);
+            }
+
+            function positionTooltip(e) {
+                // clientX/clientY perché il tooltip è position: fixed
+                const x = e.clientX;
+                const y = e.clientY;
+                tooltip.style.left = (x + 10) + 'px';
+                tooltip.style.top = (y + 10) + 'px';
+            }
+
+            bars.forEach((bar) => {
+                bar.addEventListener('mouseenter', function (e) {
+                    const count = parseInt(this.dataset.count || '0', 10) || 0;
+                    const pct = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : '0.0';
+
+                    tooltip.textContent = `count: ${count} (${pct}%)`;
+                    tooltip.style.opacity = '1';
+
+                    positionTooltip(e);
+                });
+
+                bar.addEventListener('mousemove', function (e) {
+                    positionTooltip(e);
+                });
+
+                bar.addEventListener('mouseleave', function () {
+                    tooltip.style.opacity = '0';
+                });
+            });
+        }
+
+        // --- SCATTER PLOT LOGIC ---
+        // Use json_script to safely pass data
+        const scatterDataElement = document.getElementById('scatter-data-json');
+        if (!scatterDataElement) {
+            console.error("Scatter data element not found!");
+            return;
+        }
+        const scatterData = JSON.parse(scatterDataElement.textContent);
+        console.log("Scatter Data Loaded:", scatterData);
+
+        const scatterEl = document.getElementById('scatter-plot');
+        if (!scatterEl) {
+            console.error("Scatter plot container #scatter-plot not found!");
+        } else {
+            console.log("Scatter plot container found.");
+        }
+        const currentFeatureId = {{ feature.feature_index }};
+
+    // FIX: Sort data so current feature is drawn last (on top)
+    if (scatterData && scatterData.length > 0) {
+        scatterData.sort((a, b) => {
+            if (a.id === currentFeatureId) return 1;
+            if (b.id === currentFeatureId) return -1;
+            return 0;
+        });
+    }
+    // Base URL per aprire le feature: /explorer/run/<run_id>/feature/<id>/
+    const featureDetailBase = "{% url 'explorer:feature_detail' run.id 0 %}".replace(/0\/?$/, '');
+
+    if (scatterData && scatterData.length > 0) {
+        const xVals = scatterData.map(d => d.x);
+        const yVals = scatterData.map(d => d.y);
+        const textVals = scatterData.map(d => `Feature ${d.id}: ${d.label}`);
+        const ids = scatterData.map(d => d.id);
+
+        const colors = ids.map(id => id === currentFeatureId ? '#d946ef' : 'rgba(255, 255, 255, 0.3)');
+        const sizes = ids.map(id => id === currentFeatureId ? 12 : 6);
+        const opacities = ids.map(id => id === currentFeatureId ? 1.0 : 0.6);
+
+        const trace = {
+            x: xVals,
+            y: yVals,
+            mode: 'markers',
+            type: 'scatter',
+            text: textVals,
+            customdata: ids,   // per sapere quale feature è stata cliccata
+            marker: {
+                size: sizes,
+                color: colors,
+                opacity: opacities,
+                line: {
+                    color: ids.map(id => id === currentFeatureId ? '#fff' : 'transparent'),
+                    width: ids.map(id => id === currentFeatureId ? 2 : 0)
+                }
+            },
+            hoverinfo: 'text'
+        };
+
+        const layout = {
+            margin: { t: 10, r: 10, b: 40, l: 50 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            showlegend: false,
+            xaxis: {
+                title: 'Mean Activation',
+                titlefont: { color: '#888', size: 10 },
+                tickfont: { color: '#666', size: 9 },
+                gridcolor: 'rgba(255,255,255,0.05)',
+                zerolinecolor: 'rgba(255,255,255,0.1)'
+            },
+            yaxis: {
+                title: 'Variance',
+                titlefont: { color: '#888', size: 10 },
+                tickfont: { color: '#666', size: 9 },
+                gridcolor: 'rgba(255,255,255,0.05)',
+                zerolinecolor: 'rgba(255,255,255,0.1)'
+            },
+            hoverlabel: {
+                bgcolor: '#222',
+                bordercolor: '#444',
+                font: { color: '#eee' }
+            }
+        };
+
+        const config = {
+            displayModeBar: false,
+            responsive: true
+        };
+
+        Plotly.newPlot('scatter-plot', [trace], layout, config);
+
+        // Click su un punto -> apri feature in nuova tab
+        scatterEl.on('plotly_click', function (event) {
+            if (!event.points || !event.points.length) return;
+            const featId = event.points[0].customdata;
+            if (featId !== undefined && featId !== null) {
+                const url = featureDetailBase + featId + "/";
+                window.open(url, '_blank');
+            }
+        });
+    }});
+    // --- LOAD MORE EXAMPLES LOGIC ---
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', function () {
+            const hiddenItems = document.querySelectorAll('.snippet-item.d-none');
+            let count = 0;
+            hiddenItems.forEach(item => {
+                if (count < 5) {
+                    item.classList.remove('d-none');
+                    count++;
+                }
+            });
+
+            // Hide button if no more hidden items
+            if (document.querySelectorAll('.snippet-item.d-none').length === 0) {
+                loadMoreBtn.style.display = 'none';
+            }
+        });
+    }
+</script>
+
+{% endblock %}

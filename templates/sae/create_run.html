@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}New Experiment · Sparsifire{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h6 class="text-uppercase text-muted mb-1 small ls-1">Training Center</h6>
+  <h1 class="h3 mb-0">Start New Experiment</h1>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <div class="col-lg-7">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        
+        <div class="mb-4">
+            {# Renderizza il form usando le classi Bootstrap definite in forms.py #}
+            {{ form.as_p }}
+        </div>
+
+        <hr class="border-secondary border-opacity-25 my-4">
+
+        <div class="d-flex gap-3">
+            <button type="submit" class="btn-accent shadow-sm">
+                <i class="bi bi-rocket-takeoff me-2"></i> Create Configuration
+            </button>
+            <a href="{% url 'sae:run_list' %}" class="btn-ghost text-decoration-none">
+                Cancel
+            </a>
+        </div>
+      </form>
+    </div>
+
+    <div class="col-lg-5 ps-lg-5 mt-5 mt-lg-0 border-start border-secondary border-opacity-10">
+        <h5 class="text-white mb-3">
+            <i class="bi bi-sliders me-2 text-accent"></i> Hyperparameters
+        </h5>
+        <p class="text-muted small mb-4">
+            Configure the architecture and training constraints for the Sparse Autoencoder.
+        </p>
+        
+        <ul class="list-unstyled text-muted small">
+            <li class="mb-3">
+                <strong class="d-block text-white mb-1">Expansion Factor</strong>
+                Determines the size of the latent space relative to the input (e.g. 4x means latent_dim = input_dim * 4).
+            </li>
+            <li class="mb-3">
+                <strong class="d-block text-white mb-1">K-Sparsity (Top-K)</strong>
+                Enforces strict sparsity by keeping only the top K most active neurons per sample.
+            </li>
+            <li class="mb-3">
+                <strong class="d-block text-white mb-1">Alpha Aux</strong>
+                Coefficient for the auxiliary loss, used to revive "dead" neurons during training.
+            </li>
+        </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

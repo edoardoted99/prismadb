@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% load l10n %}
+
+{% block title %}Inference - PRISMΔ{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="display-6 fw-bold mb-0">
+            <i class="bi bi-magic me-2 text-accent"></i>Inference
+        </h1>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="panel">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label for="run_select" class="form-label text-muted small text-uppercase fw-bold">
+                            Select SAE Run
+                        </label>
+                        <select name="run_id" id="run_select" class="form-select" required>
+                            {% for run in runs %}
+                            <option value="{{ run.id }}" {% if selected_run and selected_run.id == run.id %}selected{% endif %}>
+                                Run #{{ run.id }} ({{ run.dataset.name }}) - {{ run.k_sparsity }}k
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="text_input" class="form-label text-muted small text-uppercase fw-bold">
+                            Input Text
+                        </label>
+                        <textarea name="text" id="text_input" class="form-control font-mono" rows="10"
+                            placeholder="Enter text to analyze..." required>{{ input_text }}</textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-accent w-100">
+                        <i class="bi bi-lightning-charge me-2"></i>Analyze
+                    </button>
+                </form>
+                
+            </div>
+            {% if hist_x %}
+            <br>
+            <div class="panel">
+                
+                <div class="mb-4">
+                    <h6 class="text-muted small text-uppercase fw-bold mb-2">Activation Distribution</h6>
+                    <div id="activation-histogram" style="width: 100%; height: 200px;"></div>
+                </div>
+                
+            </div>
+            {% endif %}
+            
+        </div>
+
+        <div class="col-md-8">
+            {% if analyzed_features %}
+            <div class="panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Active Features</h5>
+                    <span class="badge bg-secondary">{{ analyzed_features|length }} features found</span>
+                </div>
+
+                {% if embedding_norm %}
+                <div class="mb-3">
+                    <small class="text-muted">
+                        Embedding Norm:
+                        <span class="text-white font-mono">
+                            {{ embedding_norm|floatformat:4 }}
+                        </span>
+                    </small>
+                </div>
+                {% endif %}
+
+                
+
+                <div class="table-responsive">
+                    <table class="table table-custom table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px;">Index</th>
+                                <th style="width: 150px;">Activation</th>
+                                <th>Label</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for feat in analyzed_features %}
+                            <tr>
+                                <td>
+                                    <a href="{% url 'explorer:feature_detail' selected_run.id feat.index %}"
+                                        class="font-mono text-decoration-none" target="_blank">
+                                        #{{ feat.index }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <div class="d-inline-block align-middle me-2" style="width: 60px;">
+                                        <div class="progress" style="height: 6px;">
+                                            {% with width_val=feat.activation_pct|stringformat:".1f" %}
+                                            <div class="progress-bar bg-accent" role="progressbar"
+                                                style="width: {{ width_val }}%;" aria-valuenow="{{ width_val }}"
+                                                aria-valuemin="0" aria-valuemax="100"></div>
+                                            {% endwith %}
+                                        </div>
+                                    </div>
+                                    <span class="font-mono small">
+                                        {{ feat.activation|floatformat:4 }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if feat.label %}
+                                    <div class="fw-bold text-white">{{ feat.label }}</div>
+                                    {% if feat.description %}
+                                    <div class="small text-muted text-truncate" style="max-width: 300px;">
+                                        {{ feat.description }}
+                                    </div>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted fst-italic">Not interpreted</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% elif input_text %}
+            <div class="panel text-center py-5">
+                <i class="bi bi-search text-muted display-4 mb-3"></i>
+                <p class="text-muted">No active features found for this input.</p>
+            </div>
+            {% else %}
+            <div class="panel text-center py-5">
+                <i class="bi bi-arrow-left text-muted display-4 mb-3"></i>
+                <p class="text-muted">Select a run and enter text to see active features.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        {% if hist_x %}
+        const xVals = {{ hist_x|safe }};
+        const yVals = {{ hist_y|safe }};
+
+    const trace = {
+        x: xVals,
+        y: yVals,
+        type: 'bar',
+        marker: {
+            color: '#8b5cf6',
+            opacity: 0.7,
+        }
+    };
+
+    const layout = {
+        margin: { t: 10, r: 10, b: 30, l: 30 },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        xaxis: {
+            title: 'Activation',
+            titlefont: { color: '#888', size: 10 },
+            tickfont: { color: '#666', size: 9 },
+            gridcolor: 'rgba(255,255,255,0.05)',
+        },
+        yaxis: {
+            title: 'Count',
+            titlefont: { color: '#888', size: 10 },
+            tickfont: { color: '#666', size: 9 },
+            gridcolor: 'rgba(255,255,255,0.05)',
+        },
+        font: { color: '#eee' }
+    };
+
+    const config = {
+        displayModeBar: false,
+        responsive: true
+    };
+
+    Plotly.newPlot('activation-histogram', [trace], layout, config);
+    {% endif %}});
+</script>
+{% endblock %}

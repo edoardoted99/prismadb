@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Start Interpretation · Sparsifire{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h6 class="text-uppercase text-muted mb-1 small ls-1">Explorer</h6>
+  <h1 class="h3 mb-0">Interpret Features</h1>
+</div>
+
+<div class="row">
+  <div class="col-lg-8">
+    <div class="panel">
+      <form method="post">
+        {% csrf_token %}
+        
+        {% if form.errors %}
+            <div class="alert alert-danger">
+                <strong>Please correct the errors below:</strong>
+                {{ form.errors }}
+            </div>
+        {% endif %}
+        
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label small text-muted text-uppercase fw-bold">{{ form.run.label }}</label>
+                {{ form.run }}
+                {% if form.run.errors %}<div class="text-danger small">{{ form.run.errors }}</div>{% endif %}
+            </div>
+            
+            <div class="col-md-6">
+                <label class="form-label small text-muted text-uppercase fw-bold">{{ form.n_features.label }}</label>
+                {{ form.n_features }}
+                <div class="form-text text-muted">{{ form.n_features.help_text }}</div>
+            </div>
+            
+            <div class="col-md-6">
+                <label class="form-label small text-muted text-uppercase fw-bold">{{ form.ollama_model.label }}</label>
+                {{ form.ollama_model }}
+                <div class="form-text text-muted">{{ form.ollama_model.help_text }}</div>
+            </div>
+
+            <div class="col-md-6 mt-4">
+                <label class="form-label small text-muted text-uppercase fw-bold text-success">
+                    <i class="bi bi-plus-circle me-1"></i> {{ form.k_positive.label }}
+                </label>
+                {{ form.k_positive }}
+                <div class="form-text text-muted">{{ form.k_positive.help_text }}</div>
+            </div>
+
+            <div class="col-md-6 mt-4">
+                <label class="form-label small text-muted text-uppercase fw-bold text-danger">
+                    <i class="bi bi-dash-circle me-1"></i> {{ form.k_negative.label }}
+                </label>
+                {{ form.k_negative }}
+                <div class="form-text text-muted">{{ form.k_negative.help_text }}</div>
+            </div>
+
+            <div class="col-md-6 mt-4">
+                <label class="form-label small text-muted text-uppercase fw-bold">
+                    <i class="bi bi-thermometer-half me-1"></i> {{ form.temperature.label }}
+                </label>
+                {{ form.temperature }}
+                <div class="form-text text-muted">{{ form.temperature.help_text }}</div>
+            </div>
+            <div class="col-md-6 mt-4"></div> <div class="col-12 mt-4">
+                <label class="form-label small text-muted text-uppercase fw-bold">{{ form.system_prompt.label }}</label>
+                {{ form.system_prompt }}
+                <div class="form-text text-muted">
+                    Customize the persona to guide the interpretation style.
+                </div>
+            </div>
+        </div>
+
+        <hr class="border-secondary border-opacity-10 my-4">
+
+        <div class="d-flex gap-3">
+            <button type="submit" class="btn-accent shadow-sm">
+                <i class="bi bi-magic me-2"></i> Start Interpretation
+            </button>
+            <a href="{% url 'explorer:index' %}" class="btn-ghost text-decoration-none">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-4 mt-4 mt-lg-0">
+      <div class="alert alert-info bg-opacity-10 border-0 text-info d-flex mb-3">
+          <i class="bi bi-info-circle-fill me-3 mt-1"></i>
+          <div class="small">
+              <strong>Local LLM Required</strong><br>
+              Ensure Ollama is running: <code>ollama serve</code>
+          </div>
+      </div>
+      
+      <div class="panel p-4">
+          <h6 class="text-uppercase text-muted small ls-1 mb-3">Methodology</h6>
+          <p class="small text-muted mb-0">
+              This process uses the <strong>Auto-Interpretability</strong> method described by O'Neill et al. (2024).
+              <br><br>
+              It feeds the LLM with a contrastive set of <strong>Top-K activating</strong> documents versus <strong>Random non-activating</strong> documents to distill the semantic meaning of each latent feature.
+          </p>
+      </div>
+  </div>
+</div>
+{% endblock %}

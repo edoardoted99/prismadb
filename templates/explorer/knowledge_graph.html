@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge Graph · Run #{{ run.id }}{% endblock %}
+
+{% block extra_head %}
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+    #mynetwork {
+        width: 100%;
+        height: 75vh;
+        border: 1px solid var(--border);
+        background-color: #0d0d0f; /* Background scuro per il canvas */
+        border-radius: 8px;
+    }
+    
+    /* Loading overlay */
+    #loading {
+        position: absolute; top: 50%; left: 50%; 
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        background: rgba(0,0,0,0.8);
+        padding: 20px; border-radius: 8px;
+        pointer-events: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb" class="mb-1">
+            <a href="{% url 'explorer:feature_list' run.id %}" class="text-muted text-decoration-none small">
+                <i class="bi bi-arrow-left me-1"></i> Back to List
+            </a>
+        </nav>
+        <h2 class="mb-0 text-white fw-bold">Semantic Knowledge Graph</h2>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-ghost btn-sm" onclick="network.fit()">
+            <i class="bi bi-arrows-fullscreen"></i> Fit View
+        </button>
+        <button class="btn btn-accent btn-sm shadow-sm" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh Layout
+        </button>
+    </div>
+</div>
+
+<div class="panel p-0 position-relative overflow-hidden">
+    <div id="loading" class="text-center text-white">
+        <div class="spinner-border text-accent mb-2" role="status"></div>
+        <div>Building Graph...</div>
+    </div>
+    <div id="mynetwork"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    var network = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fetch Data
+        fetch("{% url 'explorer:knowledge_graph_data' run.id %}")
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                if(data.error) { alert(data.error); return; }
+                initGraph(data);
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('loading').innerHTML = '<span class="text-danger">Error loading graph data</span>';
+            });
+    });
+
+    function initGraph(data) {
+        var container = document.getElementById('mynetwork');
+        
+        var nodes = new vis.DataSet(data.nodes);
+        var edges = new vis.DataSet(data.edges);
+        var graphData = { nodes: nodes, edges: edges };
+
+        var options = {
+            nodes: {
+                shape: 'dot',
+                font: {
+                    face: 'Inter',
+                    size: 14,
+                    color: '#e4e4e7',
+                    strokeWidth: 0, // No outline text
+                    background: 'rgba(0,0,0,0.5)' // Leggibilità
+                },
+                borderWidth: 1,
+                color: {
+                    background: '#ff3a3a', // var(--accent)
+                    border: '#ffffff',
+                    highlight: { background: '#ff5c5c', border: '#ffffff' }
+                },
+                scaling: {
+                    min: 10, max: 30,
+                    label: { enabled: true, min: 14, max: 24 }
+                }
+            },
+            edges: {
+                color: { color: 'rgba(255,255,255,0.1)', highlight: '#ff3a3a' },
+                width: 0.5,
+                smooth: { type: 'continuous' },
+                arrows: { to: { enabled: true, scaleFactor: 0.5 } } // Frecce piccole per gerarchia
+            },
+            physics: {
+                stabilization: false,
+                barnesHut: {
+                    gravitationalConstant: -2000, // Repulsione forte
+                    centralGravity: 0.3,
+                    springLength: 95,
+                    springConstant: 0.04,
+                    damping: 0.09
+                }
+            },
+            interaction: {
+                tooltipDelay: 200,
+                hover: true
+            }
+        };
+
+        network = new vis.Network(container, graphData, options);
+
+        // Click Event -> Vai al dettaglio feature
+        network.on("click", function (params) {
+            if (params.nodes.length === 1) {
+                var nodeId = params.nodes[0];
+                // Costruisci URL JS-side è brutto ma efficace qui
+                window.location.href = "/explorer/run/{{ run.id }}/feature/" + nodeId + "/";
+            }
+        });
+    }
+</script>
+{% endblock %}

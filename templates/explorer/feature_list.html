@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Features · Run #{{ run.id }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h6 class="text-uppercase text-muted mb-1 small ls-1">Run #{{ run.id }}</h6>
+        <h2 class="mb-0">Feature Browser</h2>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'explorer:export_feature_statistics' run.id %}" class="btn btn-ghost text-muted">
+            <i class="bi bi-download me-2"></i> Features CSV
+        </a>
+        <a href="{% url 'explorer:export_document_activations' run.id %}" class="btn btn-ghost text-muted">
+            <i class="bi bi-file-earmark-text me-2"></i> Docs CSV
+        </a>
+        <a href="{% url 'explorer:calculate_stats' run.id %}" class="btn btn-ghost text-muted">
+            <i class="bi bi-calculator me-2"></i> Calc Stats
+        </a>
+        <a href="{% url 'explorer:start_interpretation' %}?run={{ run.id }}" class="btn btn-accent">
+            <i class="bi bi-plus-lg me-2"></i> Interpret More
+        </a>
+    </div>
+</div>
+<div class="panel p-3 mb-4">
+    <form method="get" class="d-flex gap-2">
+        <input type="text" name="q" class="form-control bg-dark border-secondary"
+            placeholder="Search feature label, description or index..." value="{{ query }}">
+        <button type="submit" class="btn btn-ghost border-secondary">Search</button>
+    </form>
+</div>
+
+<!-- Info paginazione -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted small mb-0">
+        Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} features
+    </p>
+</div>
+
+<div class="panel p-0 overflow-hidden">
+    <table class="table table-custom mb-0 align-middle table-hover">
+        <thead class="bg-dark bg-opacity-50">
+            <tr>
+                <th class="ps-4" style="width: 80px">Index</th>
+                <th style="width: 250px">Label</th>
+                <th>Description Snippet</th>
+                <th style="width: 100px">Max Act</th>
+                <th class="text-end pe-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in page_obj %}
+            <tr style="cursor: pointer;"
+                onclick="window.location='{% url 'explorer:feature_detail' run.id f.feature_index %}'">
+                <td class="ps-4"><span class="badge bg-dark border border-secondary text-muted font-monospace">{{f.feature_index }}</span></td>
+                <td class="fw-bold text-white">{{ f.label|default:"Unlabeled" }}</td>
+                <td class="text-muted small text-truncate" style="max-width: 400px;">
+                    {{ f.description|truncatechars:80 }}
+                </td>
+                <td class="font-monospace small text-accent">{{ f.max_activation|floatformat:2 }}</td>
+                <td class="text-end pe-4">
+                    <i class="bi bi-chevron-right text-muted"></i>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center py-5 text-muted">No features found matching your query.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Controlli paginazione -->
+{% if page_obj.has_other_pages %}
+<div class="d-flex justify-content-center mt-4">
+    <nav>
+        <ul class="pagination">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link bg-dark border-secondary text-white"
+                    href="?page=1{% if query %}&q={{ query }}{% endif %}">First</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link bg-dark border-secondary text-white"
+                    href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}">Previous</a>
+            </li>
+            {% endif %}
+
+            <li class="page-item active">
+                <span class="page-link bg-accent border-accent">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+            </li>
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link bg-dark border-secondary text-white"
+                    href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}">Next</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link bg-dark border-secondary text-white"
+                    href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}">Last</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endif %}
+{% endblock %}

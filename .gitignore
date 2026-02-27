@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Django
+db.sqlite3
+debug.log
+*.log
+staticfiles/
+
+# Media & uploads (user-generated, large files)
+media/
+upload/
+
+# Model weights
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Thesis PDFs (not part of the codebase)
+thesis/

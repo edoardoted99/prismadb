@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+
+{% block title %}System Status · PRISM△{% endblock %}
+
+{% block extra_head %}
+<style>
+    .terminal-window {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.85rem;
+        padding: 1rem;
+        border-radius: 6px;
+        border: 1px solid #333;
+        height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        margin-bottom: 0;
+    }
+
+    .log-line {
+        margin: 0;
+        line-height: 1.4;
+    }
+
+    .log-info {
+        color: #4ec9b0;
+    }
+
+    .log-warning {
+        color: #ce9178;
+    }
+
+    .log-error {
+        color: #f44747;
+    }
+
+    .log-debug {
+        color: #569cd6;
+    }
+
+    .process-table th {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #888;
+    }
+
+    .status-running {
+        color: #4ec9b0;
+    }
+
+    .status-stopped {
+        color: #f44747;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-white fw-bold">System Status</h1>
+            <p class="text-muted mb-0 small">Monitor live application logs and background processes.</p>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" id="refresh-btn">
+            <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+        </button>
+    </div>
+
+    <!-- COMPACT SYSTEM RESOURCES MONITOR -->
+    <div class="card bg-dark border-secondary border-opacity-25 mb-4">
+        <div class="card-body py-3">
+            <!-- CPU -->
+            <div class="d-flex align-items-center mb-2">
+                <div class="d-flex align-items-center" style="width: 100px;">
+                    <i class="bi bi-cpu text-muted me-2"></i>
+                    <span class="text-muted small fw-bold">CPU</span>
+                </div>
+                <div class="progress flex-grow-1 mx-3" style="height: 6px; background-color: var(--accent-dim);">
+                    <div class="progress-bar" id="cpu-bar" role="progressbar"
+                        style="width: 0%; background-color: var(--accent);"></div>
+                </div>
+                <span class="text-white fw-bold small" id="cpu-val" style="width: 50px; text-align: right;">0%</span>
+            </div>
+
+            <!-- RAM -->
+            <div class="d-flex align-items-center mb-2">
+                <div class="d-flex align-items-center" style="width: 100px;">
+                    <i class="bi bi-memory text-muted me-2"></i>
+                    <span class="text-muted small fw-bold">RAM</span>
+                </div>
+                <div class="progress flex-grow-1 mx-3" style="height: 6px; background-color: var(--accent-dim);">
+                    <div class="progress-bar" id="ram-bar" role="progressbar"
+                        style="width: 0%; background-color: var(--accent);"></div>
+                </div>
+                <div class="d-flex flex-column align-items-end" style="width: 50px;">
+                    <span class="text-white fw-bold small" id="ram-val">0%</span>
+                </div>
+            </div>
+
+            <!-- GPU CARD -->
+            <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-gpu-card text-white me-2"></i>
+                        <span class="text-white fw-bold small" id="gpu-name">Checking GPU...</span>
+                    </div>
+                    <span class="badge bg-secondary bg-opacity-25 text-white border border-secondary border-opacity-25"
+                        id="gpu-temp-badge">
+                        <i class="bi bi-thermometer-half me-1"></i><span id="gpu-temp">-°C</span>
+                    </span>
+                </div>
+
+                <!-- GPU Utilization -->
+                <div class="d-flex align-items-center mb-2">
+                    <div class="d-flex align-items-center" style="width: 80px;">
+                        <span class="text-muted small fw-bold">GPU</span>
+                    </div>
+                    <div class="progress flex-grow-1 mx-2" style="height: 6px; background-color: var(--accent-dim);">
+                        <div class="progress-bar" id="gpu-bar" role="progressbar"
+                            style="width: 0%; background-color: var(--accent);"></div>
+                    </div>
+                    <div class="d-flex flex-column align-items-end" style="width: 50px;">
+                        <span class="text-white fw-bold small" id="gpu-val">-</span>
+                    </div>
+                </div>
+
+                <!-- GPU Memory -->
+                <div class="d-flex align-items-center">
+                    <div class="d-flex align-items-center" style="width: 80px;">
+                        <span class="text-muted small fw-bold">gpuMEM</span>
+                    </div>
+                    <div class="progress flex-grow-1 mx-2" style="height: 6px; background-color: var(--accent-dim);">
+                        <div class="progress-bar" id="gpu-mem-bar" role="progressbar"
+                            style="width: 0%; background-color: var(--accent);"></div>
+                    </div>
+                    <div class="d-flex flex-column align-items-end" style="width: 50px;">
+                        <span class="text-white fw-bold small" id="gpu-mem-val">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- MAIN COLUMN -->
+        <div class="col-12">
+
+            <!-- PROCESS TABLE (MOVED UP) -->
+            <div class="card bg-dark border-secondary border-opacity-25 mb-4">
+                <div
+                    class="card-header bg-transparent border-secondary border-opacity-25 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-uppercase small text-muted"><i class="bi bi-list-task me-2"></i>Active
+                        Processes</span>
+                    <span
+                        class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25"
+                        id="process-count-badge">0 Active</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0 process-table">
+                            <thead>
+                                <tr>
+                                    <th class="ps-3">Thread Name</th>
+                                    <th>ID</th>
+                                    <th>Duration</th>
+                                    <th style="width: 40%;">Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody id="thread-list">
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted fst-italic">Loading processes...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LOGS (MOVED DOWN) -->
+            <div class="card bg-dark border-secondary border-opacity-25">
+                <div
+                    class="card-header bg-transparent border-secondary border-opacity-25 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-uppercase small text-muted"><i class="bi bi-terminal me-2"></i>Live
+                        Application Logs</span>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="auto-scroll" checked>
+                        <label class="form-check-label small text-muted" for="auto-scroll">Auto-scroll</label>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="log-viewer" class="terminal-window mb-0 border-0 rounded-0 rounded-bottom">
+                        <div class="text-muted fst-italic p-3">Connecting to log stream...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const logViewer = document.getElementById('log-viewer');
+    const threadList = document.getElementById('thread-list');
+    const processCountBadge = document.getElementById('process-count-badge');
+    const autoScrollCheckbox = document.getElementById('auto-scroll');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    // Stats Elements
+    const cpuVal = document.getElementById('cpu-val');
+    const cpuBar = document.getElementById('cpu-bar');
+    const ramVal = document.getElementById('ram-val');
+    const ramBar = document.getElementById('ram-bar');
+    const gpuName = document.getElementById('gpu-name');
+    const gpuBar = document.getElementById('gpu-bar');
+    const gpuVal = document.getElementById('gpu-val');
+    const gpuMemBar = document.getElementById('gpu-mem-bar');
+    const gpuMemVal = document.getElementById('gpu-mem-val');
+    const gpuTemp = document.getElementById('gpu-temp');
+
+    let lastLogLine = 0;
+
+    function fetchLogs() {
+        fetch(`{% url 'explorer:get_logs' %}?last_line=${lastLogLine}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.lines && data.lines.length > 0) {
+                    if (lastLogLine === 0) {
+                        logViewer.innerHTML = '';
+                    }
+
+                    data.lines.forEach(line => {
+                        const div = document.createElement('div');
+                        div.className = 'log-line';
+
+                        if (line.includes('INFO')) div.classList.add('log-info');
+                        else if (line.includes('WARNING')) div.classList.add('log-warning');
+                        else if (line.includes('ERROR')) div.classList.add('log-error');
+                        else if (line.includes('DEBUG')) div.classList.add('log-debug');
+
+                        div.textContent = line;
+                        logViewer.appendChild(div);
+                    });
+
+                    // Limit DOM elements to prevent freezing
+                    while (logViewer.children.length > 1000) {
+                        logViewer.removeChild(logViewer.firstChild);
+                    }
+
+                    lastLogLine = data.last_line;
+
+                    if (autoScrollCheckbox.checked) {
+                        logViewer.scrollTop = logViewer.scrollHeight;
+                    }
+                }
+            })
+            .catch(err => console.error('Error fetching logs:', err));
+    }
+
+    function fetchStats() {
+        fetch(`{% url 'explorer:get_system_stats' %}`)
+            .then(response => response.json())
+            .then(data => {
+                // CPU
+                cpuVal.textContent = data.cpu + '%';
+                cpuBar.style.width = data.cpu + '%';
+
+                // RAM
+                ramVal.textContent = data.ram.percent + '%';
+                ramBar.style.width = data.ram.percent + '%';
+
+                // GPU
+                if (data.gpu.available) {
+                    if (gpuName) gpuName.textContent = data.gpu.name;
+
+                    // GPU Core Utilization
+                    let gpuUtil = data.gpu.utilization || 0;
+                    gpuBar.style.width = gpuUtil + '%';
+                    if (gpuVal) gpuVal.textContent = gpuUtil + '%';
+
+                    // GPU Memory
+                    let memPct = 0;
+                    if (data.gpu.memory_total > 0) {
+                        memPct = (data.gpu.memory_used / data.gpu.memory_total) * 100;
+                        if (gpuMemVal) gpuMemVal.textContent = `${data.gpu.memory_used.toFixed(1)}G`; // Show GB instead of %
+                    } else {
+                        if (gpuMemVal) gpuMemVal.textContent = '-';
+                    }
+                    if (gpuMemBar) gpuMemBar.style.width = memPct + '%';
+
+                    // Temp (in label)
+                    if (gpuTemp) {
+                        if (data.gpu.temperature > 0) {
+                            gpuTemp.textContent = data.gpu.temperature + '°C';
+                        } else {
+                            gpuTemp.textContent = '';
+                        }
+                    }
+
+                } else {
+                    gpuBar.style.width = '0%';
+                    if (gpuVal) gpuVal.textContent = '-';
+
+                    if (gpuMemBar) gpuMemBar.style.width = '0%';
+                    if (gpuMemVal) gpuMemVal.textContent = '-';
+
+                    if (gpuTemp) gpuTemp.textContent = '';
+                }
+            })
+            .catch(err => console.error('Error fetching stats:', err));
+    }
+
+    function fetchThreads() {
+        fetch(`{% url 'explorer:get_threads' %}`)
+            .then(response => response.json())
+            .then(data => {
+                threadList.innerHTML = '';
+                processCountBadge.textContent = `${data.threads.length} Active`;
+
+                if (data.threads.length === 0) {
+                    threadList.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">No active background threads.</td></tr>';
+                    return;
+                }
+
+                data.threads.forEach(thread => {
+                    let progressHtml = '<span class="text-muted small">-</span>';
+
+                    if (thread.progress > 0 || thread.message) {
+                        progressHtml = `
+                            <div class="d-flex flex-column">
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-accent" role="progressbar" style="width: ${thread.progress}%" aria-valuenow="${thread.progress}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <small class="text-muted mt-1" style="font-size: 0.75rem;">${thread.message || (thread.progress + '%')}</small>
+                            </div>
+                        `;
+                    }
+
+                    let actionBtn = '';
+                    if (thread.name === 'run_interpretation_pipeline') {
+                        // Extract run_id from message or context if possible. 
+                        // Since we don't have run_id in thread info easily, we might need to parse it or pass it.
+                        // For now, let's assume we can parse it from the message "Run #123" if present, 
+                        // OR we update the backend to send run_id.
+                        // Let's rely on the fact that we only have one active interpretation usually.
+                        // But to be safe, let's parse "Run #(\d+)" from the log/message if possible.
+                        // Actually, the best way is to have the backend send 'run_id' in the thread info.
+                        // For now, let's use a generic "Stop" that might need run_id.
+
+                        // Let's try to parse run_id from the thread name or message if we updated the thread name to include it?
+                        // No, thread name is static.
+                        // Let's parse the message: "STARTING BATCH PIPELINE | Run #14"
+                        // Or we can just pass run_id in the TASK_PROGRESS dict!
+
+                        if (thread.run_id) {
+                            actionBtn = `
+                                <button class="btn btn-sm btn-outline-warning me-1" onclick="stopThread(${thread.run_id})" title="Pause Gracefully">
+                                    <i class="bi bi-pause-circle"></i>
+                                </button>
+                            `;
+                        }
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="ps-3 align-middle">
+                            <div class="fw-bold text-white">${thread.name}</div>
+                        </td>
+                        <td class="font-monospace small text-muted align-middle">${thread.ident}</td>
+                        <td class="font-monospace small text-muted align-middle">${thread.duration || '-'}</td>
+                        <td class="align-middle">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="flex-grow-1 me-3">${progressHtml}</div>
+                                <div>${actionBtn}</div>
+                            </div>
+                        </td>
+                    `;
+                    threadList.appendChild(tr);
+                });
+            })
+            .catch(err => console.error('Error fetching threads:', err));
+    }
+
+    function killThread(ident) {
+        if (!confirm('Are you sure you want to attempt to stop this thread? This can be unstable.')) return;
+
+        fetch(`{% url 'explorer:kill_thread' ident=0 %}`.replace('0', ident), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    fetchThreads();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Network error: ' + err));
+    }
+
+    function stopThread(runId) {
+        // Graceful stop
+        if (!confirm('Pause interpretation? It will stop after the current feature finishes.')) return;
+
+        fetch(`{% url 'explorer:stop_interpretation' run_id=0 %}`.replace('0', runId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Network error: ' + err));
+    }
+
+    // Initial load
+    fetchLogs();
+    fetchThreads();
+    fetchStats();
+
+    // Polling
+    setInterval(fetchLogs, 2000);
+    setInterval(fetchThreads, 2000);
+    setInterval(fetchStats, 3000);
+
+    refreshBtn.addEventListener('click', () => {
+        fetchLogs();
+        fetchThreads();
+        fetchStats();
+    });
+
+</script>
+{% endblock %}

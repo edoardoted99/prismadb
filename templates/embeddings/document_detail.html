@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Doc #{{ document.external_id }} · Sparsifire{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{% url 'embeddings:dataset_detail' dataset.pk %}" class="text-muted text-decoration-none small mb-2 d-inline-block">
+    <i class="bi bi-arrow-left me-1"></i> Torna al Dataset
+  </a>
+  <div class="d-flex justify-content-between align-items-center">
+    <h1 class="h3 mb-0">Documento <span class="font-monospace text-accent">#{{ document.external_id }}</span></h1>
+    
+    <div class="badge bg-dark border border-secondary border-opacity-25 px-3 py-2">
+      {% if document.status == 'done' %}
+        <span class="status-done"><span class="badge-dot"></span> Processato</span>
+      {% elif document.status == 'error' %}
+        <span class="status-error"><span class="badge-dot"></span> Errore</span>
+      {% else %}
+        <span class="status-pending"><span class="badge-dot"></span> In Coda</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Colonna Contenuto -->
+  <div class="col-lg-8">
+    <div class="panel mb-4">
+      <h5 class="h6 text-uppercase text-muted mb-3 ls-1">Contenuto Testuale</h5>
+      <div class="bg-black rounded p-3 border border-secondary border-opacity-10">
+        <pre class="mb-0 text-light" style="white-space: pre-wrap; font-family: inherit; line-height: 1.6;">{{ document.text }}</pre>
+      </div>
+    </div>
+
+    {% if document.status == 'error' %}
+    <div class="alert alert-danger bg-danger bg-opacity-10 border-danger text-danger">
+      <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Errore di generazione</h6>
+      <p class="mb-0 font-monospace small">{{ document.error_message }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Colonna Embedding / Metadati -->
+  <div class="col-lg-4">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="h6 text-uppercase text-muted mb-0 ls-1">Vettore Embedding</h5>
+        {% if document.embedding %}
+          <button onclick="copyEmbedding()" class="btn btn-sm btn-ghost py-0" id="copyBtn">
+            <i class="bi bi-clipboard me-1"></i> Copia
+          </button>
+        {% endif %}
+      </div>
+
+      {% if document.embedding %}
+        <div class="bg-black rounded p-3 border border-secondary border-opacity-10 mb-3 position-relative overflow-hidden">
+          <div class="font-monospace text-muted small" style="word-break: break-all; max-height: 150px; overflow-y: auto;">
+            [{{ document.embedding|slice:":5"|join:", " }}, ... ]
+          </div>
+          <div class="position-absolute bottom-0 start-0 w-100 h-50 bg-gradient-to-t from-black to-transparent" style="pointer-events: none; background: linear-gradient(to top, #000 10%, transparent);"></div>
+        </div>
+        
+        <ul class="list-unstyled small text-muted mb-0">
+          <li class="d-flex justify-content-between border-bottom border-secondary border-opacity-10 py-2">
+            <span>Dimensioni</span>
+            <span class="text-main font-monospace">{{ document.embedding|length }} dim</span>
+          </li>
+          <li class="d-flex justify-content-between border-bottom border-secondary border-opacity-10 py-2">
+            <span>Creato il</span>
+            <span class="text-main">{{ document.created_at|date:"d/m/Y H:i" }}</span>
+          </li>
+          <li class="d-flex justify-content-between py-2">
+            <span>Model</span>
+            <span class="text-main">{{ dataset.get_model_name_display }}</span>
+          </li>
+        </ul>
+
+        <!-- Hidden input for JS copy -->
+        <textarea id="embeddingFull" class="d-none">{{ document.embedding }}</textarea>
+
+      {% else %}
+        <div class="text-center py-4 text-muted">
+          <i class="bi bi-hourglass-split mb-2 d-block fs-4"></i>
+          In attesa di generazione...
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function copyEmbedding() {
+    const el = document.getElementById('embeddingFull');
+    if(!el) return;
+    
+    navigator.clipboard.writeText(el.value).then(() => {
+      const btn = document.getElementById('copyBtn');
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<i class="bi bi-check2"></i> Copiato!';
+      btn.classList.add('text-success', 'border-success');
+      
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('text-success', 'border-success');
+      }, 2000);
+    });
+  }
+</script>
+{% endblock %}
