@@ -112,6 +112,10 @@ python manage.py runserver
 
 Visit `http://127.0.0.1:8000/`.
 
+### Sample Dataset
+
+A ready-to-use sample of 1000 PubMed abstracts is included at `sample_data/pubmed_abstracts_1000.json` (source: [suolyer/pile_pubmed-abstracts](https://huggingface.co/datasets/suolyer/pile_pubmed-abstracts)). Upload it directly from the Embeddings page to get started.
+
 ---
 
 ## Usage

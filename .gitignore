@@ -25,6 +25,8 @@ staticfiles/
 media/
 upload/
 
+# Keep sample_data/ tracked (small demo datasets)
+
 # Model weights
 *.pt
 *.pth
