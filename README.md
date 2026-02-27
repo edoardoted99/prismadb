@@ -6,6 +6,10 @@ PRISMA is a Django web application that makes Large Language Model (LLM) embeddi
 
 Built as part of a thesis project by **Edoardo Tedesco**.
 
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="PRISMA Home" width="700">
+</p>
+
 ---
 
 ## The Problem
@@ -112,11 +116,47 @@ Visit `http://127.0.0.1:8000/`.
 
 ## Usage
 
-1. **Upload a dataset** at `/embeddings/` -- provide a JSON file with text documents
-2. **Compute embeddings** -- select a HuggingFace model and embed the dataset
-3. **Train a SAE** at `/sae/` -- configure expansion factor, Top-K sparsity, epochs
-4. **Interpret features** at `/explorer/` -- run the LLM interpreter to label discovered features
-5. **Explore** -- browse feature details, activation histograms, co-occurrence matrices, and the knowledge graph
+### 1. Upload a dataset
+
+Provide a JSON file with text documents and select a HuggingFace embedding model.
+
+<p align="center">
+  <img src="docs/screenshots/upload_dataset.png" alt="Upload Dataset" width="500">
+</p>
+
+### 2. Train a Sparse Autoencoder
+
+Configure expansion factor, Top-K sparsity, and other hyperparameters.
+
+<p align="center">
+  <img src="docs/screenshots/train_sae.png" alt="Train SAE" width="600">
+</p>
+
+### 3. Browse interpreted features
+
+The LLM interpreter labels each latent feature automatically. Browse all discovered concepts with their activation statistics.
+
+<p align="center">
+  <img src="docs/screenshots/feature_browser.png" alt="Feature Browser" width="600">
+</p>
+
+### 4. Inspect individual features
+
+View activation histograms, density, and global context for each feature.
+
+<p align="center">
+  <img src="docs/screenshots/feature_statistics.png" alt="Feature Statistics" width="500">
+  <br>
+  <img src="docs/screenshots/top_activating.png" alt="Top Activating Documents" width="500">
+</p>
+
+### 5. Explore the knowledge graph
+
+Visualize the semantic topology of extracted features -- a directed graph built from co-occurrence and correlation analysis via Maximum Spanning Tree.
+
+<p align="center">
+  <img src="docs/screenshots/knowledge_graph.png" alt="Knowledge Graph" width="700">
+</p>
 
 ---
 
