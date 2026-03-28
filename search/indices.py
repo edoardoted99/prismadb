@@ -12,7 +12,7 @@ def get_feature_index_name(run_id):
     return f"prisma_features_{run_id}"
 
 
-# Embedding dimensions per model (from embeddings/models.py MODEL_CHOICES)
+# Known embedding dimensions for HuggingFace models
 EMBEDDING_DIMS = {
     'medbit': 768,
     'bio_bert_sentence': 768,
@@ -28,8 +28,26 @@ EMBEDDING_DIMS = {
 
 
 def get_embedding_dim(model_name):
-    """Return the embedding dimension for a given model name."""
-    return EMBEDDING_DIMS.get(model_name, 768)
+    """
+    Return the embedding dimension for a given model name.
+    For known HF models, returns a hardcoded value.
+    For Ollama/unknown models, probes the model and caches the result.
+    Returns None if detection fails.
+    """
+    if model_name in EMBEDDING_DIMS:
+        return EMBEDDING_DIMS[model_name]
+
+    # Probe the model to detect dimension
+    try:
+        from embeddings.embedders import detect_embedding_dim
+        dim = detect_embedding_dim(model_name)
+        if dim:
+            EMBEDDING_DIMS[model_name] = dim  # cache for future calls
+            return dim
+    except Exception as e:
+        logger.warning(f"Could not detect embedding dim for {model_name}: {e}")
+
+    return None
 
 
 def create_document_index(dataset_id, embedding_dim):

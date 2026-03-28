@@ -2,30 +2,9 @@ from django.db import models
 
 
 class Dataset(models.Model):
-    MODEL_CHOICES = [
-        # Modelli dominio medico
-        ("medbit", "IVN-RIN/medBIT"),  # BERT biomedico italiano
-        ("bio_bert_sentence", "pritamdeka/Sentence-BioBERT"),  # embedding biomedical (EN)
-        ("sapbert", "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"),  # concetti medici
-
-        # Modelli Sentence Transformer multilingua (ottimi per ITA)
-        ("sbert_multi_minilm", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
-        ("sbert_multi_distiluse", "sentence-transformers/distiluse-base-multilingual-cased-v2"),
-
-        # Modelli GTE (moderni, performanti, multilingua)
-        ("gte_base", "thenlper/gte-base"),
-        ("gte_large", "thenlper/gte-large"),
-        ("gte_multilingual", "Alibaba-NLP/gte-multilingual-base"),
-
-        # Modelli SBERT inglesi (top quality)
-        ("sbert_mpnet", "sentence-transformers/all-mpnet-base-v2"),
-        ("sbert_minilm", "sentence-transformers/all-MiniLM-L6-v2"),
-    ]
-
-
     name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True)
-    model_name = models.CharField(max_length=100, choices=MODEL_CHOICES, default="medbit")
+    model_name = models.CharField(max_length=200, default="nomic-embed-text:latest")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

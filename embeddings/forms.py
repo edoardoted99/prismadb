@@ -1,5 +1,5 @@
 from django import forms
-from .models import Dataset
+from explorer.llm_utils import get_ollama_models
 
 
 class UploadDatasetForm(forms.Form):
@@ -15,13 +15,23 @@ class UploadDatasetForm(forms.Form):
     )
     model_name = forms.ChoiceField(
         label="Modello embeddings",
-        choices=Dataset.MODEL_CHOICES,
-        initial="medbit",
+        choices=[],  # populated dynamically from Ollama
     )
     file = forms.FileField(
         label="File JSON",
         help_text="Carica un file JSON con una lista di oggetti {id, text}.",
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['model_name'].choices = self._get_model_choices()
+
+    @staticmethod
+    def _get_model_choices():
+        models = get_ollama_models()
+        if models:
+            return [(m, m) for m in models]
+        return [("", "-- Ollama offline --")]
 
     def clean_file(self):
         f = self.cleaned_data["file"]

@@ -34,6 +34,9 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
     Document.objects.bulk_create(docs_to_create, batch_size=500)
 
     # Dual-write: create OpenSearch index and index documents
+    # Note: for Ollama models, dim may be None at this point (no embeddings yet).
+    # If so, we skip index creation now — it will happen in generate_embeddings_for_dataset
+    # after the first batch succeeds and we know the actual dimension.
     try:
         from search.client import is_available
         if is_available():
@@ -41,23 +44,26 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
             from search.bulk_ops import bulk_index_documents
 
             dim = get_embedding_dim(model_name)
-            create_document_index(dataset.id, dim)
+            if dim:
+                create_document_index(dataset.id, dim)
 
-            # Re-fetch created docs to get their IDs
-            created_docs = Document.objects.filter(dataset=dataset)
-            os_docs = []
-            for doc in created_docs.iterator(chunk_size=500):
-                os_docs.append({
-                    'django_id': doc.id,
-                    'external_id': doc.external_id,
-                    'text': doc.text,
-                    'status': doc.status,
-                })
-                if len(os_docs) >= 500:
+                # Re-fetch created docs to get their IDs
+                created_docs = Document.objects.filter(dataset=dataset)
+                os_docs = []
+                for doc in created_docs.iterator(chunk_size=500):
+                    os_docs.append({
+                        'django_id': doc.id,
+                        'external_id': doc.external_id,
+                        'text': doc.text,
+                        'status': doc.status,
+                    })
+                    if len(os_docs) >= 500:
+                        bulk_index_documents(dataset.id, os_docs)
+                        os_docs = []
+                if os_docs:
                     bulk_index_documents(dataset.id, os_docs)
-                    os_docs = []
-            if os_docs:
-                bulk_index_documents(dataset.id, os_docs)
+            else:
+                logger.info(f"[OpenSearch] Dim unknown for {model_name}, deferring index creation to embedding phase")
     except Exception as e:
         logger.warning(f"[OpenSearch] Failed to index documents: {e}")
 
@@ -127,7 +133,37 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32):
                 try:
                     from search.client import is_available
                     if is_available():
-                        from search.bulk_ops import bulk_update_embeddings
+                        from search.indices import create_document_index, get_document_index_name
+                        from search.bulk_ops import bulk_update_embeddings, bulk_index_documents
+
+                        # Ensure index exists (deferred creation for Ollama models)
+                        client = None
+                        try:
+                            from search.client import get_client
+                            client = get_client()
+                        except Exception:
+                            pass
+
+                        index_name = get_document_index_name(dataset.id)
+                        if client and not client.indices.exists(index=index_name):
+                            # Detect dim from first successful embedding
+                            first_emb = next(
+                                (d.embedding for d in docs if d.status == 'done' and d.embedding), None
+                            )
+                            if first_emb:
+                                dim = len(first_emb)
+                                create_document_index(dataset.id, dim)
+                                # Also index text for docs already created
+                                all_docs = Document.objects.filter(dataset=dataset)
+                                os_docs = [{
+                                    'django_id': d.id,
+                                    'external_id': d.external_id,
+                                    'text': d.text,
+                                    'status': d.status,
+                                } for d in all_docs.iterator(chunk_size=500)]
+                                if os_docs:
+                                    bulk_index_documents(dataset.id, os_docs)
+
                         os_updates = [
                             (doc.id, doc.embedding)
                             for doc in docs if doc.status == 'done' and doc.embedding
