@@ -50,61 +50,108 @@ def load_sae_model(run, device):
 def scan_single_feature_examples(run, feature_index, k=10):
     """
     Scansiona il dataset SOLO per una specifica feature.
+    Uses OpenSearch scroll if available, otherwise falls back to SQLite.
     """
     device = get_safe_device()
     logger.info(f"[Interpreter] Single-scan for feature {feature_index} on {device}...")
-    
+
     model, mean, std = load_sae_model(run, device)
     if not model:
         return []
 
     top_heap = []
     batch_size = 512
-    doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-    total = doc_qs.count()
+    truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
     processed = 0
-    
-    logger.info(f"[Interpreter] Scanning {total} documents for feature {feature_index}...")
-    
-    for offset in range(0, total, batch_size):
-        batch_docs = list(doc_qs[offset:offset+batch_size])
-        if not batch_docs: break
-        
-        embeddings = [d.embedding for d in batch_docs if d.embedding]
-        if not embeddings:
-            processed += len(batch_docs)
-            continue
 
-        try:
-            X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-            X_batch = zscore_transform(X_batch, mean, std)
-            
-            with torch.no_grad():
-                acts = model.encode(X_batch)
-                feat_acts = acts[:, feature_index].cpu()
-            
-            indices = torch.nonzero(feat_acts > 0.001).flatten()
-            
-            for idx in indices:
-                val = feat_acts[idx].item()
-                doc = batch_docs[idx.item()]
-                
-                truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
-                if len(top_heap) < k:
-                    heapq.heappush(top_heap, (val, doc.id, doc.text[:truncate_len]))
-                else:
-                    if val > top_heap[0][0]:
+    # Try OpenSearch scroll first
+    use_opensearch = False
+    try:
+        from search.client import is_available
+        if is_available():
+            from search.bulk_ops import scroll_documents_in_batches, count_documents
+            total = count_documents(run.dataset_id)
+            use_opensearch = True
+            logger.info(f"[Interpreter] Scanning {total} documents via OpenSearch for feature {feature_index}...")
+    except Exception:
+        use_opensearch = False
+
+    if use_opensearch:
+        for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                       fields=['django_id', 'text', 'embedding']):
+            embeddings = [d['embedding'] for d in batch_data if d.get('embedding')]
+            if not embeddings:
+                processed += len(batch_data)
+                continue
+
+            try:
+                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+                X_batch = zscore_transform(X_batch, mean, std)
+
+                with torch.no_grad():
+                    acts = model.encode(X_batch)
+                    feat_acts = acts[:, feature_index].cpu()
+
+                indices = torch.nonzero(feat_acts > 0.001).flatten()
+
+                for idx in indices:
+                    val = feat_acts[idx].item()
+                    doc = batch_data[idx.item()]
+                    text = doc.get('text', '')[:truncate_len]
+
+                    if len(top_heap) < k:
+                        heapq.heappush(top_heap, (val, doc['django_id'], text))
+                    elif val > top_heap[0][0]:
+                        heapq.heapreplace(top_heap, (val, doc['django_id'], text))
+            except Exception as e:
+                logger.error(f"[Interpreter] Error in batch processing: {e}")
+
+            processed += len(batch_data)
+            if processed % 1000 == 0:
+                logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
+    else:
+        # Fallback: SQLite
+        doc_qs = run.dataset.documents.filter(status='done').order_by('id')
+        total = doc_qs.count()
+        logger.info(f"[Interpreter] Scanning {total} documents via SQLite for feature {feature_index}...")
+
+        for offset in range(0, total, batch_size):
+            batch_docs = list(doc_qs[offset:offset+batch_size])
+            if not batch_docs: break
+
+            embeddings = [d.embedding for d in batch_docs if d.embedding]
+            if not embeddings:
+                processed += len(batch_docs)
+                continue
+
+            try:
+                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+                X_batch = zscore_transform(X_batch, mean, std)
+
+                with torch.no_grad():
+                    acts = model.encode(X_batch)
+                    feat_acts = acts[:, feature_index].cpu()
+
+                indices = torch.nonzero(feat_acts > 0.001).flatten()
+
+                for idx in indices:
+                    val = feat_acts[idx].item()
+                    doc = batch_docs[idx.item()]
+
+                    if len(top_heap) < k:
+                        heapq.heappush(top_heap, (val, doc.id, doc.text[:truncate_len]))
+                    elif val > top_heap[0][0]:
                         heapq.heapreplace(top_heap, (val, doc.id, doc.text[:truncate_len]))
-        except Exception as e:
-            logger.error(f"[Interpreter] Error in batch processing: {e}")
+            except Exception as e:
+                logger.error(f"[Interpreter] Error in batch processing: {e}")
 
-        processed += len(batch_docs)
-        if processed % 1000 == 0:
-            logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
+            processed += len(batch_docs)
+            if processed % 1000 == 0:
+                logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
 
     results = sorted(top_heap, key=lambda x: x[0], reverse=True)
     logger.info(f"[Interpreter] Scan finished. Found {len(results)} examples > 0.001")
-    
+
     formatted_docs = [
         {'id': did, 'act': float(v), 'text': txt}
         for v, did, txt in results
@@ -114,7 +161,7 @@ def scan_single_feature_examples(run, feature_index, k=10):
 def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=None):
     """
     Recupera k esempi negativi (attivazione zero o molto bassa) per una feature.
-    Se model/mean/std non sono forniti, li carica.
+    Uses OpenSearch random_score if available, otherwise falls back to SQLite.
     """
     device = get_safe_device()
     if not model:
@@ -123,38 +170,69 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
 
     negatives = []
     attempts = 0
-    max_attempts = 50 # Evita loop infiniti
-    
-    # Prendiamo un batch di documenti casuali
+    max_attempts = 50
+    truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
+
     while len(negatives) < k and attempts < max_attempts:
         attempts += 1
-        # Random order
-        random_docs = list(run.dataset.documents.filter(status='done').order_by('?')[:k*2])
-        
-        embeddings = [d.embedding for d in random_docs if d.embedding]
-        if not embeddings: continue
 
+        # Try OpenSearch random docs first
+        random_docs_data = None
         try:
-            X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-            X_batch = zscore_transform(X_batch, mean, std)
-            
-            with torch.no_grad():
-                acts = model.encode(X_batch)
-                feat_acts = acts[:, feature_index].cpu()
-            
-            # Seleziona quelli con attivazione ~ 0
-            for i, val in enumerate(feat_acts):
-                if val.item() < 0.001: # Threshold per zero
-                    doc = random_docs[i]
-                    # Evita duplicati
-                    if not any(d['id'] == doc.id for d in negatives):
-                        truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
-                        negatives.append({'id': doc.id, 'act': val.item(), 'text': doc.text[:truncate_len]})
-                        if len(negatives) >= k: break
-        except Exception as e:
-            logger.error(f"[Interpreter] Error finding negatives: {e}")
-            break
-            
+            from search.client import is_available
+            if is_available():
+                from search.queries import get_random_documents
+                random_docs_data = get_random_documents(run.dataset_id, k=k*2)
+        except Exception:
+            random_docs_data = None
+
+        if random_docs_data:
+            embeddings = [d['embedding'] for d in random_docs_data if d.get('embedding')]
+            if not embeddings: continue
+
+            try:
+                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+                X_batch = zscore_transform(X_batch, mean, std)
+
+                with torch.no_grad():
+                    acts = model.encode(X_batch)
+                    feat_acts = acts[:, feature_index].cpu()
+
+                for i, val in enumerate(feat_acts):
+                    if val.item() < 0.001:
+                        doc = random_docs_data[i]
+                        doc_id = doc['django_id']
+                        if not any(d['id'] == doc_id for d in negatives):
+                            text = doc.get('text', '')[:truncate_len]
+                            negatives.append({'id': doc_id, 'act': val.item(), 'text': text})
+                            if len(negatives) >= k: break
+            except Exception as e:
+                logger.error(f"[Interpreter] Error finding negatives: {e}")
+                break
+        else:
+            # Fallback: SQLite
+            random_docs = list(run.dataset.documents.filter(status='done').order_by('?')[:k*2])
+            embeddings = [d.embedding for d in random_docs if d.embedding]
+            if not embeddings: continue
+
+            try:
+                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+                X_batch = zscore_transform(X_batch, mean, std)
+
+                with torch.no_grad():
+                    acts = model.encode(X_batch)
+                    feat_acts = acts[:, feature_index].cpu()
+
+                for i, val in enumerate(feat_acts):
+                    if val.item() < 0.001:
+                        doc = random_docs[i]
+                        if not any(d['id'] == doc.id for d in negatives):
+                            negatives.append({'id': doc.id, 'act': val.item(), 'text': doc.text[:truncate_len]})
+                            if len(negatives) >= k: break
+            except Exception as e:
+                logger.error(f"[Interpreter] Error finding negatives: {e}")
+                break
+
     return negatives[:k]
 
 def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, temperature=0.2):
@@ -305,71 +383,100 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
 
         # --- 1. SCAN DATASET ---
         top_activations = {i: [] for i in range(model.d_latent)}
-        K_HEAP_SIZE = 10 
-        
+        K_HEAP_SIZE = 10
         batch_size = 512
-        doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-        total_docs = doc_qs.count()
         processed = 0
-        
-        logger.info(f"[Interpreter] Scanning {total_docs} documents to find top activating features...")
 
-        for offset in range(0, total_docs, batch_size):
-            # CHECK FOR STOP SIGNAL DURING SCAN
-            if TASK_CONTROL.get(run_id) == 'STOP':
-                logger.info(f"[Interpreter] STOP signal received during scan. Aborting.")
-                if tid in TASK_PROGRESS:
-                    TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
+        # Try OpenSearch scroll first, fallback to SQLite
+        use_opensearch = False
+        try:
+            from search.client import is_available
+            if is_available():
+                from search.bulk_ops import scroll_documents_in_batches, count_documents
+                total_docs = count_documents(run.dataset_id)
+                use_opensearch = True
+        except Exception:
+            use_opensearch = False
+
+        if not use_opensearch:
+            total_docs = run.dataset.documents.filter(status='done').count()
+
+        logger.info(f"[Interpreter] Scanning {total_docs} documents ({'OpenSearch' if use_opensearch else 'SQLite'})...")
+
+        def _process_batch(batch_embeddings, batch_docs_info):
+            """Process a batch: encode with SAE, track top activations."""
+            nonlocal processed
+            if not batch_embeddings:
                 return
 
-            batch_docs = list(doc_qs[offset:offset+batch_size])
-            if not batch_docs: break
-            
-            embeddings = [d.embedding for d in batch_docs if d.embedding]
-            if not embeddings:
-                processed += len(batch_docs)
-                continue
-
             try:
-                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+                X_batch = torch.tensor(batch_embeddings, dtype=torch.float32).to(device)
                 X_batch = zscore_transform(X_batch, mean, std)
-                
+
                 with torch.no_grad():
                     feature_acts = model.encode(X_batch)
-                
+
                 feature_acts_cpu = feature_acts.cpu()
-                max_in_batch = feature_acts_cpu.max().item()
-                
-                # Thresholding
+
                 mask = feature_acts_cpu > 0.001
                 rows, cols = torch.where(mask)
-                
+
                 rows_np = rows.numpy()
                 cols_np = cols.numpy()
                 vals_np = feature_acts_cpu[mask].numpy()
-                
+
                 for r, c, v in zip(rows_np, cols_np, vals_np):
-                    doc = batch_docs[r]
+                    doc_info = batch_docs_info[r]
                     heap = top_activations[c]
                     if len(heap) < K_HEAP_SIZE:
-                        heapq.heappush(heap, (v, doc.id, doc.text))
-                    else:
-                        if v > heap[0][0]:
-                            heapq.heapreplace(heap, (v, doc.id, doc.text))
-                
+                        heapq.heappush(heap, (v, doc_info[0], doc_info[1]))
+                    elif v > heap[0][0]:
+                        heapq.heapreplace(heap, (v, doc_info[0], doc_info[1]))
+
             except Exception as e:
                 logger.error(f"[Interpreter] Batch error: {e}")
 
-            processed += len(batch_docs)
-            
-            # --- PROGRESS UPDATE (0-50%) ---
-            pct = int((processed / total_docs) * 50)
-            if tid in TASK_PROGRESS:
-                TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
-            # -------------------------------
+        if use_opensearch:
+            for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                           fields=['django_id', 'text', 'embedding']):
+                if TASK_CONTROL.get(run_id) == 'STOP':
+                    logger.info(f"[Interpreter] STOP signal received during scan. Aborting.")
+                    if tid in TASK_PROGRESS:
+                        TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
+                    return
 
-            if processed % 1000 == 0:
-                logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs. Max act in last batch: {max_in_batch:.3f}")
+                embeddings = [d['embedding'] for d in batch_data if d.get('embedding')]
+                docs_info = [(d['django_id'], d.get('text', '')) for d in batch_data if d.get('embedding')]
+                _process_batch(embeddings, docs_info)
+
+                processed += len(batch_data)
+                pct = int((processed / total_docs) * 50) if total_docs > 0 else 0
+                if tid in TASK_PROGRESS:
+                    TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
+                if processed % 1000 == 0:
+                    logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs.")
+        else:
+            doc_qs = run.dataset.documents.filter(status='done').order_by('id')
+            for offset in range(0, total_docs, batch_size):
+                if TASK_CONTROL.get(run_id) == 'STOP':
+                    logger.info(f"[Interpreter] STOP signal received during scan. Aborting.")
+                    if tid in TASK_PROGRESS:
+                        TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
+                    return
+
+                batch_docs = list(doc_qs[offset:offset+batch_size])
+                if not batch_docs: break
+
+                embeddings = [d.embedding for d in batch_docs if d.embedding]
+                docs_info = [(d.id, d.text) for d in batch_docs if d.embedding]
+                _process_batch(embeddings, docs_info)
+
+                processed += len(batch_docs)
+                pct = int((processed / total_docs) * 50) if total_docs > 0 else 0
+                if tid in TASK_PROGRESS:
+                    TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
+                if processed % 1000 == 0:
+                    logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs.")
 
         # --- 2. SELECT TOP FEATURES ---
         logger.info("\n[Interpreter] Selecting top features...")
@@ -481,7 +588,25 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 # LINK ACTIVE INTERPRETATION
                 feat_obj.active_interpretation = interp
                 feat_obj.save()
-                
+
+                # Phase 4: Index feature in OpenSearch
+                try:
+                    from search.client import is_available
+                    if is_available():
+                        from search.bulk_ops import update_feature
+                        from search.indices import create_feature_index
+                        create_feature_index(run.id)
+                        update_feature(run.id, feat_obj.id, {
+                            'django_id': feat_obj.id,
+                            'feature_index': f_idx,
+                            'label': feat_obj.label or '',
+                            'description': feat_obj.description or '',
+                            'max_activation': float(max_act),
+                            'example_docs': formatted_docs,
+                        })
+                except Exception as os_err:
+                    logger.warning(f"[OpenSearch] Failed to index feature: {os_err}")
+
                 logger.info(f"   > SUCCESS: {result.get('label')} ({time.time()-start_ts:.1f}s)")
                 success_count += 1
             else:

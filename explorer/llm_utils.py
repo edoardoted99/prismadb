@@ -5,7 +5,6 @@ import time
 import re
 from django.conf import settings
 
-# You can add OLLAMA_BASE_URL = "http://localhost:11434" to your settings.py
 OLLAMA_BASE = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
 
 
@@ -39,8 +38,10 @@ DESCRIZIONE OUTPUT: Dati gli input forniti, completa i seguenti compiti.
 Rispondi ESCLUSIVAMENTE con un JSON valido: {'label': '...', 'description': '...'}"""
 
 
-def get_ollama_response(user_message, system_message, model="qwen2.5:14b", 
-                        base_url="http://localhost:11434", temperature=0.2, retries=2):
+def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
+                        base_url=None, temperature=0.2, retries=2):
+    if base_url is None:
+        base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
     """
     Invia una richiesta a Ollama gestendo errori, JSON parsing e parametri avanzati.
     """

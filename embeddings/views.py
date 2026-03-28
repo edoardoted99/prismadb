@@ -91,6 +91,16 @@ def delete_dataset(request, pk):
     dataset = get_object_or_404(Dataset, pk=pk)
     if request.method == "POST":
         name = dataset.name
+
+        # Delete OpenSearch index
+        try:
+            from search.client import is_available
+            if is_available():
+                from search.indices import delete_document_index
+                delete_document_index(dataset.id)
+        except Exception:
+            pass
+
         dataset.delete()
         messages.success(request, f"Dataset '{name}' has been deleted.")
         return redirect("embeddings:dataset_list")

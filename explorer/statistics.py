@@ -106,18 +106,47 @@ def calculate_statistics_pipeline(run_id):
         feature_counts = defaultdict(int)
         
         batch_size = 256
-        doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-        total_docs = doc_qs.count()
-        
         target_set = set(existing_features)
         processed = 0
 
-        # Paginazione manuale
-        while processed < total_docs:
-            batch_docs = list(doc_qs[processed : processed + batch_size])
-            if not batch_docs: break
-            
-            emb_list = [d.embedding for d in batch_docs]
+        # Try OpenSearch scroll first, fallback to SQLite
+        use_opensearch = False
+        try:
+            from search.client import is_available
+            if is_available():
+                from search.bulk_ops import scroll_documents_in_batches, count_documents
+                total_docs = count_documents(run.dataset_id)
+                use_opensearch = True
+                logger.info("[Stats] Using OpenSearch for dataset scan.")
+        except Exception:
+            use_opensearch = False
+
+        if not use_opensearch:
+            doc_qs = run.dataset.documents.filter(status='done').order_by('id')
+            total_docs = doc_qs.count()
+            logger.info("[Stats] Using SQLite for dataset scan.")
+
+        def _get_batch_iterator():
+            """Yields lists of embeddings per batch."""
+            if use_opensearch:
+                for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                               fields=['embedding']):
+                    emb_list = [d['embedding'] for d in batch_data if d.get('embedding')]
+                    yield emb_list, len(batch_data)
+            else:
+                offset = 0
+                while offset < total_docs:
+                    batch_docs = list(doc_qs[offset:offset+batch_size])
+                    if not batch_docs: break
+                    emb_list = [d.embedding for d in batch_docs if d.embedding]
+                    yield emb_list, len(batch_docs)
+                    offset += batch_size
+
+        for emb_list, batch_len in _get_batch_iterator():
+            if not emb_list:
+                processed += batch_len
+                continue
+
             X = torch.tensor(emb_list, dtype=torch.float32).to(device)
             X = zscore_transform(X, mean, std)
             
@@ -151,12 +180,12 @@ def calculate_statistics_pipeline(run_id):
                             if f1 != f2:
                                 co_occurrences[f1][f2] += 1
             
-            processed += len(batch_docs)
-            
+            processed += batch_len
+
             # Progress 20% -> 80%
-            pct = 20 + int((processed / total_docs) * 60)
+            pct = 20 + int((processed / total_docs) * 60) if total_docs > 0 else 80
             TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning dataset ({processed}/{total_docs})...'})
-            
+
             if processed % 1000 == 0:
                 logger.info(f"[Stats] Processed {processed}/{total_docs} docs...")
 
@@ -214,10 +243,39 @@ def calculate_statistics_pipeline(run_id):
             features_to_update.append(feat)
         
         SAEFeature.objects.bulk_update(
-            features_to_update, 
+            features_to_update,
             ['correlated_features', 'co_occurring_features', 'activation_histogram', 'density', 'max_activation', 'mean_activation', 'variance_activation']
         )
-        
+
+        # Phase 4: Bulk update features in OpenSearch
+        try:
+            from search.client import is_available
+            if is_available():
+                from search.bulk_ops import bulk_update_features
+                from search.indices import create_feature_index
+                create_feature_index(run.id)
+
+                os_updates = []
+                for feat in features_to_update:
+                    os_updates.append((feat.id, {
+                        'django_id': feat.id,
+                        'feature_index': feat.feature_index,
+                        'label': feat.label or '',
+                        'description': feat.description or '',
+                        'density': feat.density,
+                        'max_activation': feat.max_activation,
+                        'mean_activation': feat.mean_activation,
+                        'variance_activation': feat.variance_activation,
+                        'correlated_features': feat.correlated_features,
+                        'co_occurring_features': feat.co_occurring_features,
+                        'activation_histogram': feat.activation_histogram,
+                    }))
+                if os_updates:
+                    bulk_update_features(run.id, os_updates)
+                logger.info("[Stats] OpenSearch features updated.")
+        except Exception as os_err:
+            logger.warning(f"[OpenSearch] Failed to update features: {os_err}")
+
         logger.info("[Stats] Statistics calculation completed successfully.")
         TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Done.'})
 

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Search - PRISMA{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h2 class="brand-prism-hero mb-1">Search</h2>
+  <p class="text-muted">Hybrid search across documents and features (BM25 + Semantic + kNN)</p>
+</div>
+
+<!-- Search Form -->
+<div class="panel mb-4">
+  <form method="get" action="">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label text-muted small text-uppercase ls-1">Query</label>
+        <input type="text" name="q" class="form-control" value="{{ query }}"
+               placeholder="Search documents or features..." autofocus>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label text-muted small text-uppercase ls-1">Search Type</label>
+        <select name="type" class="form-select">
+          <option value="hybrid" {% if search_type == 'hybrid' %}selected{% endif %}>Hybrid</option>
+          <option value="bm25" {% if search_type == 'bm25' %}selected{% endif %}>Full-Text (BM25)</option>
+          <option value="semantic" {% if search_type == 'semantic' %}selected{% endif %}>Semantic (kNN)</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label text-muted small text-uppercase ls-1">Dataset</label>
+        <select name="dataset_id" class="form-select">
+          <option value="">All</option>
+          {% for ds in datasets %}
+          <option value="{{ ds.id }}" {% if selected_dataset and selected_dataset.id == ds.id %}selected{% endif %}>
+            {{ ds.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label text-muted small text-uppercase ls-1">SAE Run</label>
+        <select name="run_id" class="form-select">
+          <option value="">None</option>
+          {% for run in runs %}
+          <option value="{{ run.id }}" {% if selected_run and selected_run.id == run.id %}selected{% endif %}>
+            Run #{{ run.id }} ({{ run.dataset.name }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-1">
+        <button type="submit" class="btn btn-accent w-100">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if query %}
+<!-- Document Results -->
+{% if results %}
+<div class="panel mb-4">
+  <h5 class="mb-3">
+    <i class="bi bi-file-earmark-text me-2"></i>Documents
+    <span class="badge bg-secondary ms-2">{{ results|length }}</span>
+  </h5>
+  <div class="table-responsive">
+    <table class="table table-custom">
+      <thead>
+        <tr>
+          <th style="width: 60px">Score</th>
+          <th style="width: 120px">ID</th>
+          <th>Text</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in results %}
+        <tr>
+          <td>
+            <span class="badge bg-dark border border-secondary font-mono">
+              {{ doc.score|floatformat:3 }}
+            </span>
+          </td>
+          <td class="font-mono text-muted small">{{ doc.external_id|default:doc.django_id }}</td>
+          <td class="small">{{ doc.text|truncatechars:300 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif selected_dataset %}
+<div class="panel mb-4 text-center py-4">
+  <p class="text-muted mb-0"><i class="bi bi-inbox me-2"></i>No document results found.</p>
+</div>
+{% endif %}
+
+<!-- Feature Results -->
+{% if feature_results %}
+<div class="panel mb-4">
+  <h5 class="mb-3">
+    <i class="bi bi-cpu me-2"></i>Features
+    <span class="badge bg-secondary ms-2">{{ feature_results|length }}</span>
+  </h5>
+  <div class="table-responsive">
+    <table class="table table-custom">
+      <thead>
+        <tr>
+          <th style="width: 60px">Score</th>
+          <th style="width: 80px">#</th>
+          <th>Label</th>
+          <th>Description</th>
+          <th style="width: 80px">Density</th>
+          <th style="width: 80px">Max Act</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for feat in feature_results %}
+        <tr>
+          <td>
+            <span class="badge bg-dark border border-secondary font-mono">
+              {{ feat.score|floatformat:2 }}
+            </span>
+          </td>
+          <td class="font-mono">
+            {% if selected_run %}
+            <a href="{% url 'explorer:feature_detail' selected_run.id feat.feature_index %}">
+              {{ feat.feature_index }}
+            </a>
+            {% else %}
+            {{ feat.feature_index }}
+            {% endif %}
+          </td>
+          <td><strong>{{ feat.label }}</strong></td>
+          <td class="small text-muted">{{ feat.description|truncatechars:200 }}</td>
+          <td class="font-mono small">{{ feat.density|floatformat:4 }}</td>
+          <td class="font-mono small">{{ feat.max_activation|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif selected_run %}
+<div class="panel mb-4 text-center py-4">
+  <p class="text-muted mb-0"><i class="bi bi-inbox me-2"></i>No feature results found.</p>
+</div>
+{% endif %}
+
+{% if not selected_dataset and not selected_run %}
+<div class="panel text-center py-5">
+  <i class="bi bi-arrow-up-circle" style="font-size: 2rem; color: var(--text-muted);"></i>
+  <p class="text-muted mt-3">Select a Dataset and/or SAE Run to search.</p>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

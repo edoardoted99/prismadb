@@ -25,9 +25,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("embeddings/", include("embeddings.urls")),
     path("sae/", include("sae.urls")),
-    path("explorer/", include("explorer.urls")), 
+    path("explorer/", include("explorer.urls")),
+    path("search/", include("search.urls")),
     # ----------------------------------
-    
+
     path("", home, name='home'),
 ]
 

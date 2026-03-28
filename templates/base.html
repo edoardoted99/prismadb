@@ -375,6 +375,11 @@
         PRISM<span class="brand-prism-hero">Δ</span>
       </a>
       <nav class="d-flex gap-2">
+        <a href="{% url 'search:search' %}"
+          class="nav-link-custom {% if 'search' in request.path %}active{% endif %}">
+          <i class="bi bi-search"></i> Search
+        </a>
+
         <a href="{% url 'explorer:system_status' %}"
           class="nav-link-custom {% if 'system_status' in request.path %}active{% endif %}">
           <i class="bi bi-activity"></i> Status

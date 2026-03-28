@@ -144,21 +144,40 @@ def build_feature_families(run_id, threshold=0.1, n_iterations=3):
         active_indices = sorted(list(feat_map.keys()))
         n_feats = len(active_indices)
         idx_map = {old: new for new, old in enumerate(active_indices)}
-        
+
         if n_feats > 0:
             # --- Matrice S (Similarity) ---
             W_dec = model.decoder.weight.data.T # [total_feats, d_in]
             W_subset = W_dec[active_indices]
             W_norm = W_subset / (W_subset.norm(dim=1, keepdim=True) + 1e-8)
             S = torch.mm(W_norm, W_norm.T).numpy()
-            
+
             # --- Matrice C (Co-occurrence) & D (Dense) ---
-            # Scan veloce su un subset di documenti (max 2000 per velocità)
             C = torch.zeros((n_feats, n_feats))
             D = torch.zeros((n_feats, n_feats))
-            
-            docs = run.dataset.documents.filter(status='done')[:2000]
-            embs = [d.embedding for d in docs if d.embedding]
+
+            # Try OpenSearch for embeddings, fallback to SQLite
+            embs = None
+            try:
+                from search.client import is_available
+                if is_available():
+                    from search.bulk_ops import scroll_documents_in_batches
+                    embs = []
+                    for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=500,
+                                                                   fields=['embedding']):
+                        for d in batch_data:
+                            if d.get('embedding'):
+                                embs.append(d['embedding'])
+                            if len(embs) >= 2000:
+                                break
+                        if len(embs) >= 2000:
+                            break
+            except Exception:
+                embs = None
+
+            if embs is None:
+                docs = run.dataset.documents.filter(status='done')[:2000]
+                embs = [d.embedding for d in docs if d.embedding]
             
             if embs:
                 X = torch.tensor(embs, dtype=torch.float32).to(device)

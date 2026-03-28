@@ -71,11 +71,26 @@ def feature_list(request, run_id):
     features = run.features.all()
     
     if query:
-        features = features.filter(
-            Q(label__icontains=query) | 
-            Q(description__icontains=query) |
-            Q(feature_index__icontains=query)
-        )
+        # Phase 4: Try OpenSearch for feature search, fallback to SQLite
+        os_feature_ids = None
+        try:
+            from search.client import is_available
+            if is_available():
+                from search.queries import search_features as os_search_features
+                os_results = os_search_features(run.id, query, size=250)
+                if os_results:
+                    os_feature_ids = [r['feature_index'] for r in os_results]
+        except Exception:
+            os_feature_ids = None
+
+        if os_feature_ids is not None:
+            features = features.filter(feature_index__in=os_feature_ids)
+        else:
+            features = features.filter(
+                Q(label__icontains=query) |
+                Q(description__icontains=query) |
+                Q(feature_index__icontains=query)
+            )
     
     features = features.order_by('-max_activation')
     
@@ -334,55 +349,85 @@ def document_analyzer(request):
             context['selected_doc'] = doc
             
             # --- A. Embedding Info & Similarità ---
-            if doc.embedding:
+            # Get embedding: try OpenSearch first, then SQLite
+            doc_embedding = None
+            try:
+                from search.client import is_available
+                if is_available():
+                    from search.bulk_ops import get_document_embedding
+                    doc_embedding = get_document_embedding(int(dataset_id), doc.id)
+            except Exception:
+                pass
+            if doc_embedding is None:
+                doc_embedding = doc.embedding
+
+            if doc_embedding:
                 try:
-                    # Norma
-                    target_emb = np.array(doc.embedding)
+                    target_emb = np.array(doc_embedding)
                     context['embedding_norm'] = float(np.linalg.norm(target_emb))
 
-                    # Calcolo Similarità (Semplificato e Robust)
-                    # Escludiamo il documento stesso
-                    other_docs = Document.objects.filter(dataset_id=dataset_id).exclude(id=doc.id)
-                    
-                    target_tensor = torch.tensor([doc.embedding]) # [1, D]
-                    batch_embs = []
-                    batch_ids = []
-                    
-                    # Scansiona i primi 2000 documenti con embedding validi
-                    limit = 2000
-                    for d in other_docs.iterator(chunk_size=1000):
-                        if d.embedding and len(d.embedding) > 0:
-                            batch_embs.append(d.embedding)
-                            batch_ids.append(d)
-                            if len(batch_embs) >= limit: 
-                                break
-                    
-                    if batch_embs:
-                        others_tensor = torch.tensor(batch_embs)
-                        # Cosine Similarity
-                        sims = torch.nn.functional.cosine_similarity(target_tensor, others_tensor)
-                        
-                        # Top 5
-                        k_neigh = min(5, len(batch_embs))
-                        top_vals, top_idxs = torch.topk(sims, k=k_neigh)
-                        
-                        for val, idx in zip(top_vals, top_idxs):
-                            context['similar_docs'].append({
-                                'doc': batch_ids[idx.item()],
-                                'score': val.item()
-                            })
-                            
+                    # Try OpenSearch kNN for similarity search
+                    knn_results = None
+                    try:
+                        from search.client import is_available as os_avail
+                        if os_avail():
+                            from search.queries import search_similar_documents
+                            knn_results = search_similar_documents(
+                                int(dataset_id), doc_embedding, k=5, exclude_id=doc.id
+                            )
+                    except Exception:
+                        knn_results = None
+
+                    if knn_results:
+                        for hit in knn_results:
+                            try:
+                                sim_doc = Document.objects.get(pk=hit['django_id'])
+                                context['similar_docs'].append({
+                                    'doc': sim_doc,
+                                    'score': hit['score'],
+                                })
+                            except Document.DoesNotExist:
+                                pass
+                    else:
+                        # Fallback: manual cosine similarity via SQLite
+                        other_docs = Document.objects.filter(dataset_id=dataset_id).exclude(id=doc.id)
+
+                        target_tensor = torch.tensor([doc_embedding])
+                        batch_embs = []
+                        batch_ids = []
+
+                        limit = 2000
+                        for d in other_docs.iterator(chunk_size=1000):
+                            if d.embedding and len(d.embedding) > 0:
+                                batch_embs.append(d.embedding)
+                                batch_ids.append(d)
+                                if len(batch_embs) >= limit:
+                                    break
+
+                        if batch_embs:
+                            others_tensor = torch.tensor(batch_embs)
+                            sims = torch.nn.functional.cosine_similarity(target_tensor, others_tensor)
+
+                            k_neigh = min(5, len(batch_embs))
+                            top_vals, top_idxs = torch.topk(sims, k=k_neigh)
+
+                            for val, idx in zip(top_vals, top_idxs):
+                                context['similar_docs'].append({
+                                    'doc': batch_ids[idx.item()],
+                                    'score': val.item()
+                                })
+
                 except Exception as e:
                     print(f"[Sim Error] {e}")
 
             # --- B. SAE Inference ---
-            if doc.embedding and context['selected_run']:
+            if doc_embedding and context['selected_run']:
                 try:
                     device = "cpu"
                     model, mean, std = load_sae_model(run, device)
                     
                     if model:
-                        emb_tensor = torch.tensor([doc.embedding], dtype=torch.float32).to(device)
+                        emb_tensor = torch.tensor([doc_embedding], dtype=torch.float32).to(device)
                         if mean is not None:
                             emb_tensor = zscore_transform(emb_tensor, mean, std)
                         

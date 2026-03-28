@@ -41,6 +41,7 @@ CSRF_TRUSTED_ORIGINS = [
 # Application definition
 
 INSTALLED_APPS = [
+    'search',
     'explorer',
     'sae',
     'embeddings',
@@ -134,14 +135,24 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Ollama Settings
+OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+
 # Explorer Settings
 EXPLORER_DOC_TRUNCATION_LIMIT = 1000
 EXPLORER_OLLAMA_TIMEOUT = 1200 # 20 minuti
+
+# OpenSearch Settings
+OPENSEARCH_HOST = os.environ.get('OPENSEARCH_HOST', 'localhost')
+OPENSEARCH_PORT = int(os.environ.get('OPENSEARCH_PORT', '9200'))
+OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'False').lower() in ('true', '1', 'yes')
 
 LOGGING = {
     'version': 1,

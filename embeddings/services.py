@@ -32,6 +32,35 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
             Document(dataset=dataset, external_id=str(ext_id), text=str(text), status="pending")
         )
     Document.objects.bulk_create(docs_to_create, batch_size=500)
+
+    # Dual-write: create OpenSearch index and index documents
+    try:
+        from search.client import is_available
+        if is_available():
+            from search.indices import create_document_index, get_embedding_dim
+            from search.bulk_ops import bulk_index_documents
+
+            dim = get_embedding_dim(model_name)
+            create_document_index(dataset.id, dim)
+
+            # Re-fetch created docs to get their IDs
+            created_docs = Document.objects.filter(dataset=dataset)
+            os_docs = []
+            for doc in created_docs.iterator(chunk_size=500):
+                os_docs.append({
+                    'django_id': doc.id,
+                    'external_id': doc.external_id,
+                    'text': doc.text,
+                    'status': doc.status,
+                })
+                if len(os_docs) >= 500:
+                    bulk_index_documents(dataset.id, os_docs)
+                    os_docs = []
+            if os_docs:
+                bulk_index_documents(dataset.id, os_docs)
+    except Exception as e:
+        logger.warning(f"[OpenSearch] Failed to index documents: {e}")
+
     return dataset
 
 
@@ -93,6 +122,20 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32):
                 
                 # Bulk update per velocità
                 Document.objects.bulk_update(docs, ["embedding", "status", "error_message"])
+
+                # Dual-write: update embeddings in OpenSearch
+                try:
+                    from search.client import is_available
+                    if is_available():
+                        from search.bulk_ops import bulk_update_embeddings
+                        os_updates = [
+                            (doc.id, doc.embedding)
+                            for doc in docs if doc.status == 'done' and doc.embedding
+                        ]
+                        if os_updates:
+                            bulk_update_embeddings(dataset.id, os_updates)
+                except Exception as os_err:
+                    logger.warning(f"[OpenSearch] Failed to update embeddings: {os_err}")
                 
                 processed_count = i + len(docs)
                 progress_pct = int((processed_count / total) * 100)
