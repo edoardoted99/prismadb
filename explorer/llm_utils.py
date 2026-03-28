@@ -11,15 +11,39 @@ OLLAMA_BASE = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 def get_ollama_models():
+    """Returns all Ollama model names (for LLM chat/interpretation)."""
     try:
         response = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=0.5)
         if response.status_code == 200:
             data = response.json()
-            # Restituisce solo i nomi dei modelli (es. ['llama3', 'qwen2.5'])
             return [m['name'] for m in data.get('models', [])]
     except Exception as e:
         print(f"Ollama Error: {e}")
-    return [] # Ritorna lista vuota se fallisce
+    return []
+
+
+def get_ollama_embedding_models():
+    """
+    Returns only Ollama models that support /api/embed.
+    Filters by name containing 'embed' or family containing 'bert'.
+    """
+    try:
+        response = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=0.5)
+        if response.status_code == 200:
+            data = response.json()
+            embedding_models = []
+            for m in data.get('models', []):
+                name = m.get('name', '').lower()
+                details = m.get('details', {})
+                family = details.get('family', '').lower()
+
+                if 'embed' in name or 'bert' in family:
+                    embedding_models.append(m['name'])
+
+            return embedding_models
+    except Exception as e:
+        print(f"Ollama Error: {e}")
+    return []
 
 
 # Prompt di default

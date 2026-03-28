@@ -4,7 +4,7 @@
 
 PRISMA is a Django web application that makes Large Language Model (LLM) embeddings interpretable. Like an optical prism decomposes white light into its spectral components, PRISMA decomposes dense embedding vectors into sparse, human-readable **monosemantic features** using Sparse Autoencoders (SAEs).
 
-**v2** adds Docker containerization, OpenSearch as a vector/document store, and hybrid search (full-text + semantic + sparse).
+**v2** adds Docker containerization, Ollama-native embeddings, OpenSearch as a vector/document store, and hybrid search (full-text + semantic + sparse).
 
 Built as part of a thesis project by **Edoardo Tedesco**.
 
@@ -15,6 +15,12 @@ Built as part of a thesis project by **Edoardo Tedesco**.
 ---
 
 ## What's New in v2
+
+### Ollama-Native Embeddings
+- **No more HuggingFace/transformers**: all embeddings generated via Ollama (`/api/embed`)
+- **Auto-detection**: the upload form shows only Ollama models that support embeddings (filtered by name/family)
+- **Dynamic dimensions**: embedding dimensions detected automatically by probing the model
+- Supported models: `nomic-embed-text`, `bge-m3`, `qwen3-embedding`, `embeddinggemma`, and any other Ollama model with embedding support
 
 ### OpenSearch Integration
 - **Hybrid search**: BM25 full-text + kNN semantic + combined hybrid search across documents
@@ -66,7 +72,7 @@ Sparse Latent h (n dims, n >> d)     <-- Top-K sparsity: only k neurons active
 Reconstruction x_hat ~ x
 ```
 
-1. **Embed** -- Upload a text dataset and compute embeddings with HuggingFace models (medBIT, GTE, MiniLM, ...)
+1. **Embed** -- Upload a text dataset and compute embeddings with Ollama models (nomic-embed-text, bge-m3, qwen3-embedding, ...)
 2. **Train SAE** -- Train a Sparse Autoencoder with Top-K hard sparsity on the embeddings
 3. **Interpret** -- An LLM (via Ollama) labels each latent feature by examining its highest-activating documents
 4. **Explore** -- Browse features, view activation statistics, co-occurrence graphs, and a knowledge graph built from feature relationships
@@ -80,7 +86,7 @@ The application is organized into four Django apps:
 
 | App | Purpose |
 |---|---|
-| `embeddings` | Dataset upload, HuggingFace embedding computation |
+| `embeddings` | Dataset upload, Ollama embedding computation |
 | `sae` | SAE model definition (Top-K), training loop, sparsity heatmaps |
 | `explorer` | Feature interpretation (via Ollama), statistics, co-occurrence analysis, knowledge graph |
 | `search` | OpenSearch integration: client, index management, bulk operations, hybrid queries |
@@ -89,7 +95,7 @@ The application is organized into four Django apps:
 
 - `sae/modules.py` -- SAE architecture with Top-K sparsity and auxiliary dead-neuron loss
 - `sae/trainer.py` -- Training pipeline with z-score normalization and heatmap generation
-- `embeddings/embedders.py` -- HuggingFace model wrappers with chunked encoding
+- `embeddings/embedders.py` -- OllamaEmbedder using `/api/embed` with auto-dimension detection
 - `explorer/interpreter.py` -- Automated feature interpretation using local LLMs
 - `explorer/graph_builder.py` -- Knowledge graph construction via Maximum Spanning Tree
 - `explorer/statistics.py` -- Feature correlation, co-occurrence, and histogram computation
@@ -106,7 +112,12 @@ The application is organized into four Django apps:
 
 - Python 3.10+
 - [Docker](https://www.docker.com/) (for OpenSearch)
-- [Ollama](https://ollama.ai) (for feature interpretation)
+- [Ollama](https://ollama.ai) (for embeddings + feature interpretation)
+
+Pull at least one embedding model:
+```bash
+ollama pull nomic-embed-text
+```
 
 ### Installation
 
@@ -299,8 +310,10 @@ Navigate to `/search/` or click **Search** in the navbar.
 |---|---|
 | `project/settings.py` | Added `STATIC_ROOT`, `OLLAMA_BASE_URL`, `OPENSEARCH_*` settings, `search` in `INSTALLED_APPS` |
 | `project/urls.py` | Added `search/` URL include |
-| `requirements.txt` | Added `gunicorn>=21.2`, `opensearch-py>=2.4`, `psutil>=5.9` |
-| `embeddings/models.py` | Added `opensearch_id` field to `Document` |
+| `requirements.txt` | Added `gunicorn>=21.2`, `opensearch-py>=2.4`, `psutil>=5.9`, removed `transformers` |
+| `embeddings/embedders.py` | Replaced HuggingFace with `OllamaEmbedder` using `/api/embed` |
+| `embeddings/models.py` | Removed hardcoded model choices, added `opensearch_id` field to `Document` |
+| `embeddings/forms.py` | Dynamic model dropdown from `get_ollama_embedding_models()` |
 | `embeddings/services.py` | Dual-write: index docs + update embeddings in OpenSearch after SQLite |
 | `embeddings/views.py` | Delete OpenSearch index on dataset deletion |
 | `sae/trainer.py` | Load embeddings from OpenSearch scroll (fallback: SQLite) |
@@ -315,15 +328,18 @@ Navigate to `/search/` or click **Search** in the navbar.
 
 ## Supported Embedding Models
 
-| Key | Model | Dimensions |
+PRISMA auto-detects embedding models from your local Ollama instance. Any model whose name contains `embed` or whose family is `bert` will appear in the dropdown.
+
+| Model | Dimensions | Install |
 |---|---|---|
-| `medbit` | IVN-RIN/medBIT | 768 |
-| `gte_multilingual` | Alibaba-NLP/gte-multilingual-base | 768 |
-| `gte_large` | thenlper/gte-large | 1024 |
-| `sbert_minilm` | sentence-transformers/all-MiniLM-L6-v2 | 384 |
-| `sbert_mpnet` | sentence-transformers/all-mpnet-base-v2 | 768 |
-| `sbert_multi_minilm` | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | 384 |
-| ... | and more (see `embeddings/models.py`) | |
+| `nomic-embed-text` | 768 | `ollama pull nomic-embed-text` |
+| `bge-m3` | 1024 | `ollama pull bge-m3` |
+| `qwen3-embedding` | 1024-4096 | `ollama pull qwen3-embedding` |
+| `embeddinggemma` | 768 | `ollama pull embeddinggemma` |
+| `snowflake-arctic-embed` | 1024 | `ollama pull snowflake-arctic-embed` |
+| `mxbai-embed-large` | 1024 | `ollama pull mxbai-embed-large` |
+
+Dimensions are detected automatically at runtime.
 
 ---
 

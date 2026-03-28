@@ -1,5 +1,5 @@
 from django import forms
-from explorer.llm_utils import get_ollama_models
+from explorer.llm_utils import get_ollama_embedding_models
 
 
 class UploadDatasetForm(forms.Form):
@@ -28,10 +28,10 @@ class UploadDatasetForm(forms.Form):
 
     @staticmethod
     def _get_model_choices():
-        models = get_ollama_models()
+        models = get_ollama_embedding_models()
         if models:
             return [(m, m) for m in models]
-        return [("", "-- Ollama offline --")]
+        return [("", "-- No embedding models found (install one: ollama pull nomic-embed-text) --")]
 
     def clean_file(self):
         f = self.cleaned_data["file"]
