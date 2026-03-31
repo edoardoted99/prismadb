@@ -6,7 +6,9 @@
 {% block extra_head %}
 <style>
   /* Fixed viewport — no scroll */
+  html { background: var(--bg); }
   html, body { overflow: hidden; height: 100%; }
+  body { background: transparent !important; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; }
   main.container-root {
     padding: 0 1.5rem;
@@ -15,6 +17,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     overflow: hidden;
   }
 
@@ -47,7 +50,6 @@
     mask-image: radial-gradient(circle at center, black 20%, transparent 70%);
     z-index: -1;
   }
-
 
   /* ---- Hero ---- */
   .hero {
@@ -88,7 +90,7 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
     min-height: 110px;
     max-width: 800px;
-    margin: 0 auto 2.5rem;
+    width: 100%;
   }
   .val {
     color: rgba(255,255,255,0.15);
@@ -137,87 +139,22 @@
     to { opacity: 1; }
   }
 
-  /* ---- Quick actions ---- */
-  .actions {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  .action-card {
-    background: rgba(24,24,27,0.7);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.2rem 1.8rem;
-    text-align: center;
-    text-decoration: none;
-    color: var(--text-main);
-    transition: all 0.25s;
-    backdrop-filter: blur(10px);
-    min-width: 150px;
-  }
-  .action-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(139,92,246,0.15);
-    color: var(--text-main);
-  }
-  .action-card i {
-    font-size: 1.4rem;
-    display: block;
-    margin-bottom: 0.5rem;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .action-card .label {
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-  .action-card .desc {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    margin-top: 0.2rem;
-  }
-
   /* ---- Responsive ---- */
   @media (max-width: 768px) {
-    main.container-root {
-      height: calc(100vh - 56px);
-      padding: 0 1rem;
-      justify-content: center;
-    }
     .hero { margin-bottom: 1.5rem; }
-    .hero-brand { font-size: 2.5rem; letter-spacing: -1px; }
+    .hero-brand { font-size: 2.8rem; letter-spacing: -1px; }
     .hero-tagline { font-size: 0.9rem; max-width: 300px; }
     body::before { background-size: 120%; }
     .sparse-strip {
       font-size: 0.6rem;
       gap: 0.1rem;
       min-height: 70px;
-      margin-bottom: 1.5rem;
       max-width: 100%;
       overflow: hidden;
     }
     .sparse-strip .val { width: 8px; }
     .spike::after { font-size: 0.45rem; padding: 1px 3px; top: -18px; }
     .spike { width: 2px; }
-    .actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.6rem;
-      max-width: 320px;
-      margin: 0 auto;
-    }
-    .action-card {
-      min-width: 0;
-      padding: 0.8rem 0.6rem;
-      border-radius: 10px;
-    }
-    .action-card i { font-size: 1.1rem; margin-bottom: 0.3rem; }
-    .action-card .label { font-size: 0.8rem; }
-    .action-card .desc { font-size: 0.6rem; }
-    footer { position: fixed; bottom: 0; }
     footer .container-root { padding: 0.8rem 1rem !important; }
   }
 </style>
@@ -234,29 +171,6 @@
 </div>
 
 <div class="sparse-strip" id="sparse-container"></div>
-
-<div class="actions">
-  <a href="{% url 'embeddings:upload_dataset' %}" class="action-card">
-    <i class="bi bi-cloud-upload"></i>
-    <div class="label">Ingest</div>
-    <div class="desc">Upload & embed</div>
-  </a>
-  <a href="{% url 'sae:run_list' %}" class="action-card">
-    <i class="bi bi-cpu"></i>
-    <div class="label">Train</div>
-    <div class="desc">Sparse Autoencoder</div>
-  </a>
-  <a href="{% url 'explorer:index' %}" class="action-card">
-    <i class="bi bi-eye"></i>
-    <div class="label">Explore</div>
-    <div class="desc">Browse features</div>
-  </a>
-  <a href="{% url 'search:search' %}" class="action-card">
-    <i class="bi bi-search"></i>
-    <div class="label">Search</div>
-    <div class="desc">Hybrid queries</div>
-  </a>
-</div>
 
 {% endblock %}
 
