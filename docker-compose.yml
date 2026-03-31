@@ -28,7 +28,7 @@ services:
         VERSION: ${PRISMA_VERSION:-dev}
     image: prismadb:${PRISMA_VERSION:-latest}
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - app_data:/app/data
     environment:
