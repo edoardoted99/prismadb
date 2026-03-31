@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}PRISMΔ{% endblock %}</title>
+  <title>{% block title %}prismadb{% endblock %}</title>
 
   <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}?v=1">
 
@@ -16,7 +16,7 @@
   <style>
     :root {
 
-      /* Unified Theme Colors - PRISM△ */
+      /* Unified Theme Colors - prismadb */
       /* Elegant AI Gradient: Blue -> Violet -> Pink -> Orange */
       --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 40%, #d946ef 70%, #f97316 100%);
       --gradient-text: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
@@ -372,7 +372,7 @@
   <header>
     <div class="container-root py-0 d-flex justify-content-between align-items-center">
       <a class="navbar-brand" href="/">
-        PRISM<span class="brand-prism-hero">Δ</span>
+        PRISM<span class="brand-prism-hero">&Delta;</span>DB
       </a>
       <nav class="d-flex gap-2">
         <a href="{% url 'search:search' %}"
@@ -479,11 +479,11 @@
   <footer style="border-top: 1px solid var(--border); padding: 1.5rem 0; margin-top: 3rem;">
     <div class="container-root py-0 d-flex justify-content-between align-items-center">
       <div class="d-flex align-items-center gap-3">
-        <span class="text-muted small">PRISM<span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">&#9651;</span></span>
-        <span class="text-muted small" style="opacity: 0.5;">v{{ PRISMA_VERSION }}</span>
+        <span class="text-muted small">PRISM<span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">&Delta;</span>DB</span>
+        <span class="text-muted small" style="opacity: 0.5;">v{{ PRISMADB_VERSION }}</span>
       </div>
       <div class="d-flex align-items-center gap-3">
-        <a href="https://github.com/edoardoted99/PRISMA_v2" class="text-muted small" style="text-decoration: none;" target="_blank">
+        <a href="https://github.com/edoardoted99/prismadb" class="text-muted small" style="text-decoration: none;" target="_blank">
           <i class="bi bi-github me-1"></i>GitHub
         </a>
         <a href="https://edoardotedesco.it" class="text-muted small" style="text-decoration: none;" target="_blank">

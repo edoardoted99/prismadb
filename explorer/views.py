@@ -484,7 +484,7 @@ def system_status(request):
         'ollama_url': settings.OLLAMA_BASE_URL,
         'opensearch_host': settings.OPENSEARCH_HOST,
         'opensearch_port': settings.OPENSEARCH_PORT,
-        'prisma_version': settings.PRISMA_VERSION,
+        'prismadb_version': settings.PRISMADB_VERSION,
     })
 
 def get_logs(request):
@@ -689,7 +689,7 @@ def get_services_status(request):
             'host': f"{settings.OPENSEARCH_HOST}:{settings.OPENSEARCH_PORT}",
             **opensearch_info,
         },
-        'version': settings.PRISMA_VERSION,
+        'version': settings.PRISMADB_VERSION,
     })
 
 

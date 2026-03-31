@@ -13,7 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
-from project.__version__ import __version__ as PRISMA_VERSION
+from project.__version__ import __version__ as PRISMADB_VERSION
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -62,6 +62,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -145,6 +146,12 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -200,8 +207,8 @@ try:
         'PAGE_SIZE': 50,
     }
     SPECTACULAR_SETTINGS = {
-        'TITLE': 'PRISMA SAE API',
-        'VERSION': PRISMA_VERSION,
+        'TITLE': 'prismadb API',
+        'VERSION': PRISMADB_VERSION,
         'DESCRIPTION': 'REST API for Sparse Autoencoder exploration of LLM embeddings',
     }
 except ImportError:

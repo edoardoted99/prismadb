@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}PRISM△ — Interpretable Feature Database{% endblock %}
+{% block title %}prismadb — Interpretable Feature Database{% endblock %}
 
 {% block extra_head %}
 <style>
-  /* Force no scroll — everything in viewport */
+  /* Fixed viewport — no scroll */
+  html, body { overflow: hidden; height: 100%; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; }
   main.container-root {
     padding: 0 1.5rem;
     max-width: 100%;
@@ -25,7 +27,7 @@
     background-image: url("{% static 'prism8x.png' %}");
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 55%;
+    background-size: 75%;
     mask-image: radial-gradient(circle at center,
       rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.5) 20%,
       rgba(0,0,0,0.2) 35%, rgba(0,0,0,0) 55%);
@@ -46,36 +48,31 @@
     z-index: -1;
   }
 
+
   /* ---- Hero ---- */
   .hero {
     text-align: center;
     margin-bottom: 2.5rem;
   }
   .hero-brand {
-    font-size: 4.5rem;
+    font-size: 5rem;
     font-weight: 800;
     letter-spacing: -2px;
     color: var(--text-main);
     margin-bottom: 0.5rem;
   }
-  .hero-triangle {
+  .hero-gradient {
     background: var(--gradient-primary);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     filter: drop-shadow(0 0 30px rgba(139,92,246,0.4));
   }
   .hero-tagline {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     color: var(--text-muted);
     max-width: 520px;
-    margin: 0 auto 0.3rem;
-    line-height: 1.5;
-  }
-  .hero-sub {
-    font-size: 0.85rem;
-    color: rgba(161,161,170,0.6);
-    max-width: 480px;
     margin: 0 auto;
+    line-height: 1.5;
   }
 
   /* ---- Sparse vector animation ---- */
@@ -91,7 +88,7 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
     min-height: 110px;
     max-width: 800px;
-    margin: 0 auto 2rem;
+    margin: 0 auto 2.5rem;
   }
   .val {
     color: rgba(255,255,255,0.15);
@@ -197,12 +194,9 @@
 <div class="bg-grid"></div>
 
 <div class="hero">
-  <h1 class="hero-brand">PRISM<span class="hero-triangle">&#9651;</span></h1>
+  <h1 class="hero-brand">PRISM<span class="hero-gradient">&Delta;</span>DB</h1>
   <p class="hero-tagline">
-    The interpretable feature database for embeddings.
-  </p>
-  <p class="hero-sub">
-    Decompose dense vectors into sparse, human-readable features using Sparse Autoencoders.
+    The interpretable feature database for LLM embeddings.
   </p>
 </div>
 
@@ -239,7 +233,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const container = document.getElementById('sparse-container');
   const total = window.innerWidth < 768 ? 25 : 38;
 
-  // Example feature labels
   const featureLabels = [
     'Cardiology', 'Pediatrics', 'Neural', 'Genomics',
     'Oncology', 'Immunology', 'Radiology', 'Pathology',
