@@ -6,15 +6,14 @@ import time
 import requests
 from django.conf import settings
 
-OLLAMA_BASE = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
-
-
+def _ollama_base():
+    return getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 def get_ollama_models():
     """Returns all Ollama model names (for LLM chat/interpretation)."""
     try:
-        response = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=0.5)
+        response = requests.get(f"{_ollama_base()}/api/tags", timeout=0.5)
         if response.status_code == 200:
             data = response.json()
             return [m['name'] for m in data.get('models', [])]
@@ -29,7 +28,7 @@ def get_ollama_embedding_models():
     Filters by name containing 'embed' or family containing 'bert'.
     """
     try:
-        response = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=0.5)
+        response = requests.get(f"{_ollama_base()}/api/tags", timeout=0.5)
         if response.status_code == 200:
             data = response.json()
             embedding_models = []
