@@ -6,9 +6,11 @@ import time
 import requests
 from django.conf import settings
 
+from project.utils import get_setting
+
 
 def _ollama_base():
-    return getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
+    return get_setting('ollama_base_url')
 
 
 def get_ollama_models():
@@ -66,7 +68,7 @@ Rispondi ESCLUSIVAMENTE con un JSON valido: {'label': '...', 'description': '...
 def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
                         base_url=None, temperature=0.2, retries=2):
     if base_url is None:
-        base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
+        base_url = get_setting('ollama_base_url')
     """
     Invia una richiesta a Ollama gestendo errori, JSON parsing e parametri avanzati.
     """
