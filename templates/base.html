@@ -374,7 +374,15 @@
       <a class="navbar-brand" href="/">
         PRISM<span class="brand-prism-hero">&Delta;</span>DB
       </a>
-      <nav class="d-flex gap-2">
+
+      <!-- Hamburger toggle (mobile only) -->
+      <button class="d-md-none" onclick="document.getElementById('navMenu').classList.toggle('show')"
+        style="background:none; border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; color:var(--text-muted); font-size:1.2rem; cursor:pointer;">
+        <i class="bi bi-list"></i>
+      </button>
+
+      <!-- Desktop nav -->
+      <nav class="d-none d-md-flex gap-2">
         <a href="{% url 'search:search' %}"
           class="nav-link-custom {% if 'search' in request.path %}active{% endif %}">
           <i class="bi bi-search"></i> Search
@@ -456,6 +464,33 @@
         </div>
       </nav>
     </div>
+
+    <!-- Mobile nav (collapsible) -->
+    <div id="navMenu" class="d-md-none" style="display:none; border-top:1px solid var(--border); padding:0.5rem 1rem;">
+      <div class="d-flex flex-column gap-1">
+        <a href="{% url 'search:search' %}" class="nav-link-custom {% if 'search' in request.path %}active{% endif %}">
+          <i class="bi bi-search me-2"></i>Search
+        </a>
+        <a href="{% url 'explorer:system_status' %}" class="nav-link-custom {% if 'system_status' in request.path %}active{% endif %}">
+          <i class="bi bi-activity me-2"></i>Status
+        </a>
+        <a href="{% url 'embeddings:dataset_list' %}" class="nav-link-custom {% if 'embeddings' in request.path %}active{% endif %}">
+          <i class="bi bi-database me-2"></i>Embeddings
+        </a>
+        <a href="{% url 'sae:run_list' %}" class="nav-link-custom {% if 'sae' in request.path %}active{% endif %}">
+          <i class="bi bi-cpu me-2"></i>Training
+        </a>
+        <a href="{% url 'explorer:index' %}" class="nav-link-custom {% if 'explorer' in request.path %}active{% endif %}">
+          <i class="bi bi-compass me-2"></i>Explorer
+        </a>
+        <a href="{% url 'explorer:inference' %}" class="nav-link-custom">
+          <i class="bi bi-magic me-2"></i>Inference
+        </a>
+      </div>
+    </div>
+    <style>
+      #navMenu.show { display: block !important; }
+    </style>
   </header>
 
   <main class="container-root">
