@@ -86,9 +86,6 @@ def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
         }
     }
 
-    print(f"\n[DEBUG] System Prompt:\n{system_message}\n")
-    print(f"[DEBUG] User Prompt:\n{user_message}\n")
-
     for attempt in range(retries + 1):
         try:
             timeout = getattr(settings, 'EXPLORER_OLLAMA_TIMEOUT', 300)

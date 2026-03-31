@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+"""CLI entry point: `prisma runserver`, `prisma migrate`, etc."""
+import os
+import sys
+
+
+def main():
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings")
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(sys.argv)
+
+
+if __name__ == "__main__":
+    main()

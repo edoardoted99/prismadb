@@ -10,16 +10,10 @@ from .models import SAEFeature, Interpretation
 from sae.modules import SAE, SAEConfig, zscore_transform
 from .llm_utils import get_ollama_response
 from .task_status import TASK_PROGRESS
+from project.utils import get_device
 import threading
 
 logger = logging.getLogger(__name__)
-
-def get_safe_device():
-    if torch.backends.mps.is_available():
-        return "mps"
-    elif torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
 
 def load_sae_model(run, device):
     """Helper per caricare il modello SAE"""
@@ -52,7 +46,7 @@ def scan_single_feature_examples(run, feature_index, k=10):
     Scansiona il dataset SOLO per una specifica feature.
     Uses OpenSearch scroll if available, otherwise falls back to SQLite.
     """
-    device = get_safe_device()
+    device = get_device()
     logger.info(f"[Interpreter] Single-scan for feature {feature_index} on {device}...")
 
     model, mean, std = load_sae_model(run, device)
@@ -163,7 +157,7 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
     Recupera k esempi negativi (attivazione zero o molto bassa) per una feature.
     Uses OpenSearch random_score if available, otherwise falls back to SQLite.
     """
-    device = get_safe_device()
+    device = get_device()
     if not model:
         model, mean, std = load_sae_model(run, device)
         if not model: return []
@@ -354,7 +348,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
     if run_id in TASK_CONTROL:
         del TASK_CONTROL[run_id]
 
-    device = get_safe_device()
+    device = get_device()
     logger.info(f"\n{'='*50}")
     logger.info(f"[Interpreter] STARTING BATCH PIPELINE | Run #{run_id} | Device: {device}")
     logger.info(f"{'='*50}")

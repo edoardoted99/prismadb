@@ -1,13 +1,14 @@
 # sae/models.py
 from django.db import models
 from embeddings.models import Dataset
+from project.constants import RUN_QUEUED, RUN_RUNNING, RUN_COMPLETED, RUN_FAILED
 
 class SAERun(models.Model):
     STATUS_CHOICES = [
-        ('queued', 'Queued'),
-        ('running', 'Training'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
+        (RUN_QUEUED, 'Queued'),
+        (RUN_RUNNING, 'Training'),
+        (RUN_COMPLETED, 'Completed'),
+        (RUN_FAILED, 'Failed'),
     ]
 
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="sae_runs")
@@ -26,7 +27,7 @@ class SAERun(models.Model):
     epochs = models.IntegerField(default=20)
 
     # --- Status & Results ---
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='queued')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=RUN_QUEUED)
     error_message = models.TextField(blank=True)
     
     # Files

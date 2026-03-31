@@ -1,62 +1,34 @@
-# PRISMA_v2
+# prismadb
 
 **Projection of Representations for Interpretability via Sparse Monosemantic Autoencoders**
 
-PRISMA is a Django web application that makes Large Language Model (LLM) embeddings interpretable. Like an optical prism decomposes white light into its spectral components, PRISMA decomposes dense embedding vectors into sparse, human-readable **monosemantic features** using Sparse Autoencoders (SAEs).
+[![PyPI](https://img.shields.io/pypi/v/prismadb)](https://pypi.org/project/prismadb/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 
-**v2** adds Docker containerization, Ollama-native embeddings, OpenSearch as a vector/document store, and hybrid search (full-text + semantic + sparse).
+prismadb is a Django-based platform that makes LLM embeddings interpretable. Like an optical prism decomposes white light into its spectral components, prismadb decomposes dense embedding vectors into sparse, human-readable **monosemantic features** using Sparse Autoencoders (SAEs).
+
+It ships with Docker containerization, Ollama-native embeddings, OpenSearch as a vector/document store, hybrid search (full-text + semantic + sparse), and a REST API.
 
 Built as part of a thesis project by **Edoardo Tedesco**.
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="PRISMA Home" width="700">
+  <img src="docs/screenshots/home.png" alt="prismadb Home" width="700">
 </p>
 
 ---
 
-## What's New in v2
+## Features
 
-### Ollama-Native Embeddings
-- **No more HuggingFace/transformers**: all embeddings generated via Ollama (`/api/embed`)
-- **Auto-detection**: the upload form shows only Ollama models that support embeddings (filtered by name/family)
-- **Dynamic dimensions**: embedding dimensions detected automatically by probing the model
-- Supported models: `nomic-embed-text`, `bge-m3`, `qwen3-embedding`, `embeddinggemma`, and any other Ollama model with embedding support
-
-### OpenSearch Integration
-- **Hybrid search**: BM25 full-text + kNN semantic + combined hybrid search across documents
-- **Feature search**: full-text search on feature labels and descriptions
-- **Vector store**: document embeddings stored as `knn_vector` in OpenSearch (HNSW / cosinesimil)
-- **Per-dataset indices**: `prisma_documents_{dataset_id}`, `prisma_features_{run_id}`
-
-### Docker
-- OpenSearch runs in Docker, Django runs natively on macOS (MPS GPU acceleration)
-- Full-stack Docker profile available for CPU-only deployment
-
-### Architecture Changes
-- New **`search/`** Django app for OpenSearch integration (client, indices, bulk ops, queries)
-- **Dual-write**: data written to both SQLite and OpenSearch during transition
-- **Graceful fallback**: all OpenSearch read paths fall back to SQLite if OpenSearch is unavailable
-- **Unified search page** at `/search/` with BM25, semantic, and hybrid modes
-
-### Architecture Overview
-
-```
-SQLite (app state)              OpenSearch (data + search)
-- Dataset (metadata)            - Documents (text + dense embedding)
-- SAERun (config, status)       - SAE activations (sparse vectors)
-- Document (relational shell)   - Feature metadata (label, desc, stats)
-- Interpretation                - Interpretations (label, desc)
-- FeatureFamily
-- Auth/Sessions
-```
+- **Ollama-native embeddings** -- auto-detects embedding models, no HuggingFace dependency
+- **Sparse Autoencoder training** -- Top-K hard sparsity, dead-neuron auxiliary loss, z-score normalization
+- **LLM-powered interpretation** -- automatic labeling of latent features via local LLMs
+- **Knowledge graph** -- co-occurrence and correlation analysis, Maximum Spanning Tree visualization
+- **Hybrid search** -- BM25 full-text + kNN semantic + combined hybrid via OpenSearch
+- **REST API** -- full CRUD, inference endpoint, search endpoints, OpenAPI/Swagger docs
+- **Docker-ready** -- OpenSearch in container, optional full-stack deployment
 
 ---
-
-## The Problem
-
-LLMs project text into high-dimensional dense embeddings where individual dimensions have no intrinsic meaning. Neurons are **polysemantic** -- a single neuron may respond to multiple unrelated concepts. This is explained by the **Superposition Hypothesis** (Elhage et al. 2022): networks compress more concepts than they have neurons by exploiting statistical independence between features.
-
-PRISMA reverses this process through **disentanglement**: projecting dense embeddings into an overcomplete, sparse latent space where each axis corresponds to an interpretable atomic concept.
 
 ## How It Works
 
@@ -72,41 +44,15 @@ Sparse Latent h (n dims, n >> d)     <-- Top-K sparsity: only k neurons active
 Reconstruction x_hat ~ x
 ```
 
-1. **Embed** -- Upload a text dataset and compute embeddings with Ollama models (nomic-embed-text, bge-m3, qwen3-embedding, ...)
-2. **Train SAE** -- Train a Sparse Autoencoder with Top-K hard sparsity on the embeddings
-3. **Interpret** -- An LLM (via Ollama) labels each latent feature by examining its highest-activating documents
-4. **Explore** -- Browse features, view activation statistics, co-occurrence graphs, and a knowledge graph built from feature relationships
-5. **Search** *(v2)* -- Hybrid search across documents and features via OpenSearch
+1. **Embed** -- Upload a JSON dataset and compute embeddings with Ollama
+2. **Train SAE** -- Train a Sparse Autoencoder on the embeddings
+3. **Interpret** -- An LLM labels each latent feature by examining its highest-activating documents
+4. **Explore** -- Browse features, activation statistics, co-occurrence graphs, and the knowledge graph
+5. **Search** -- Hybrid search across documents and features via OpenSearch
 
 ---
 
-## Architecture
-
-The application is organized into four Django apps:
-
-| App | Purpose |
-|---|---|
-| `embeddings` | Dataset upload, Ollama embedding computation |
-| `sae` | SAE model definition (Top-K), training loop, sparsity heatmaps |
-| `explorer` | Feature interpretation (via Ollama), statistics, co-occurrence analysis, knowledge graph |
-| `search` | OpenSearch integration: client, index management, bulk operations, hybrid queries |
-
-### Key Modules
-
-- `sae/modules.py` -- SAE architecture with Top-K sparsity and auxiliary dead-neuron loss
-- `sae/trainer.py` -- Training pipeline with z-score normalization and heatmap generation
-- `embeddings/embedders.py` -- OllamaEmbedder using `/api/embed` with auto-dimension detection
-- `explorer/interpreter.py` -- Automated feature interpretation using local LLMs
-- `explorer/graph_builder.py` -- Knowledge graph construction via Maximum Spanning Tree
-- `explorer/statistics.py` -- Feature correlation, co-occurrence, and histogram computation
-- `search/client.py` -- Singleton OpenSearch client with health check
-- `search/indices.py` -- Index creation/deletion, per-model embedding dimensions
-- `search/bulk_ops.py` -- Bulk index, scroll, update helpers for documents and features
-- `search/queries.py` -- Query builders: BM25, kNN, hybrid, feature search
-
----
-
-## Setup
+## Quickstart
 
 ### Prerequisites
 
@@ -114,21 +60,22 @@ The application is organized into four Django apps:
 - [Docker](https://www.docker.com/) (for OpenSearch)
 - [Ollama](https://ollama.ai) (for embeddings + feature interpretation)
 
-Pull at least one embedding model:
 ```bash
 ollama pull nomic-embed-text
 ```
 
-### Installation
+### Install from PyPI
+
+```bash
+pip install prismadb[all]
+```
+
+### Install from source
 
 ```bash
 git clone https://github.com/edoardoted99/PRISMA_v2.git
 cd PRISMA_v2
-
-python -m venv venv
-source venv/bin/activate
-
-pip install -r requirements.txt
+pip install -e ".[all]"
 ```
 
 ### Configuration
@@ -136,97 +83,91 @@ pip install -r requirements.txt
 Create a `.env` file or export environment variables:
 
 ```bash
-export DJANGO_SECRET_KEY='your-secret-key-here'
-export DJANGO_DEBUG=True
-export DJANGO_ALLOWED_HOSTS='127.0.0.1,localhost'
+DJANGO_SECRET_KEY='your-secret-key-here'
+DJANGO_DEBUG=True
+DJANGO_ALLOWED_HOSTS='127.0.0.1,localhost'
 
-# OpenSearch (defaults work if using docker-compose)
-export OPENSEARCH_HOST=localhost
-export OPENSEARCH_PORT=9200
+# OpenSearch (defaults work with docker-compose)
+OPENSEARCH_HOST=localhost
+OPENSEARCH_PORT=9200
 
 # Ollama (defaults to localhost:11434)
-export OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-### Database
-
-```bash
-python manage.py migrate
-python manage.py createsuperuser  # optional
-```
-
----
-
-## Running (Hybrid Mode — Recommended for Apple Silicon)
-
-Django runs natively on macOS to use **MPS GPU acceleration** for training, embedding generation, and interpretation. OpenSearch runs in Docker.
+### Run
 
 ```bash
 # 1. Start OpenSearch
 docker compose up -d
 
-# 2. Verify OpenSearch is healthy
-curl http://localhost:9200/_cluster/health
+# 2. Initialize database
+prismadb migrate
+prismadb opensearch_init
 
-# 3. Start Ollama (separate terminal)
-ollama serve
-
-# 4. Start Django (natively, with MPS)
-python manage.py runserver
-
-# 5. Create OpenSearch indices (first time only)
-python manage.py opensearch_init
-
-# 6. Migrate existing data to OpenSearch (if upgrading from v1)
-python manage.py migrate_to_opensearch
+# 3. Start the server
+prismadb runserver
 ```
 
 Visit `http://127.0.0.1:8000/`.
 
-### Why Hybrid?
-
-MPS (Apple Metal Performance Shaders) is not available inside Docker containers — it only works natively on macOS. By running Django natively:
-- **Training** uses MPS for GPU-accelerated SAE training
-- **Embedding generation** uses MPS for faster HuggingFace inference
-- **Interpretation** runs Ollama locally without Docker networking overhead
-- **OpenSearch** runs containerized with persistent data in a Docker volume
-
-### Full Docker Mode (CPU only, no GPU)
-
-For deployment on servers without GPU, or for testing:
+### Full Docker Mode (CPU only)
 
 ```bash
 docker compose --profile full up -d
 ```
 
-This starts both OpenSearch and the Django app (with Gunicorn). The app container connects to Ollama via `host.docker.internal:11434`.
+This starts both OpenSearch and the Django app (via Gunicorn). The app connects to Ollama on the host via `host.docker.internal:11434`.
 
 ---
 
-## OpenSearch Management Commands
+## REST API
 
-```bash
-# Create indices for all existing datasets and SAE runs
-python manage.py opensearch_init
+The API is available at `/api/v1/` with interactive Swagger docs at `/api/v1/docs/`.
 
-# Migrate all existing data (documents + features) from SQLite to OpenSearch
-python manage.py migrate_to_opensearch
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/datasets/` | GET, POST | List/create datasets (multipart upload) |
+| `/api/v1/datasets/{id}/generate_embeddings/` | POST | Start embedding generation |
+| `/api/v1/datasets/{id}/documents/` | GET | List documents for a dataset |
+| `/api/v1/runs/` | GET, POST | List/create SAE runs |
+| `/api/v1/runs/{id}/start_training/` | POST | Start SAE training |
+| `/api/v1/runs/{id}/interpret/` | POST | Start batch interpretation |
+| `/api/v1/runs/{id}/calculate_stats/` | POST | Calculate feature statistics |
+| `/api/v1/runs/{id}/features/` | GET | List features (with `?q=` search) |
+| `/api/v1/runs/{id}/features/{idx}/` | GET | Feature detail with interpretations |
+| `/api/v1/runs/{id}/families/` | GET | List feature families |
+| `/api/v1/inference/` | POST | Text -> SAE activations -> top features |
+| `/api/v1/search/bm25/` | POST | BM25 keyword search |
+| `/api/v1/search/semantic/` | POST | Semantic vector search |
+| `/api/v1/search/hybrid/` | POST | Hybrid search (BM25 + semantic) |
+| `/api/v1/status/` | GET | System status (Ollama, OpenSearch) |
 
-# Check indices
-curl http://localhost:9200/_cat/indices?v
+---
+
+## Architecture
+
+```
+┌──────────────┐     ┌────────────────────────────────────────┐
+│   Ollama     │     │            Django (prismadb)            │
+│  (embed +    │◄───►│                                        │
+│   interpret) │     │  embeddings/  sae/  explorer/  search/ │
+└──────────────┘     └──────────┬──────────────┬──────────────┘
+                                │              │
+                       ┌────────▼──┐    ┌──────▼───────┐
+                       │  SQLite   │    │  OpenSearch   │
+                       │  (state)  │    │  (data +     │
+                       │           │    │   search)    │
+                       └───────────┘    └──────────────┘
 ```
 
-### Index Schema
-
-**Documents** (`prisma_documents_{dataset_id}`):
-- `text`: full-text searchable (BM25)
-- `embedding`: `knn_vector` (HNSW, cosine similarity)
-- `django_id`, `external_id`, `status`
-
-**Features** (`prisma_features_{run_id}`):
-- `label`, `description`: full-text searchable
-- `density`, `max_activation`, `mean_activation`, `variance_activation`
-- `example_docs`, `correlated_features`, `co_occurring_features`, `activation_histogram` (stored, not indexed)
+| App | Purpose |
+|---|---|
+| `embeddings` | Dataset upload, Ollama embedding computation |
+| `sae` | SAE model definition (Top-K), training loop, heatmaps |
+| `explorer` | Feature interpretation, statistics, co-occurrence, knowledge graph |
+| `search` | OpenSearch integration: client, indices, bulk ops, hybrid queries |
+| `api` | REST API with DRF + drf-spectacular (OpenAPI) |
 
 ---
 
@@ -234,7 +175,7 @@ curl http://localhost:9200/_cat/indices?v
 
 ### 1. Upload a dataset
 
-Provide a JSON file with text documents and select a HuggingFace embedding model.
+Provide a JSON file with text documents and select an Ollama embedding model.
 
 <p align="center">
   <img src="docs/screenshots/upload_dataset.png" alt="Upload Dataset" width="500">
@@ -250,7 +191,7 @@ Configure expansion factor, Top-K sparsity, and other hyperparameters.
 
 ### 3. Browse interpreted features
 
-The LLM interpreter labels each latent feature automatically. Browse all discovered concepts with their activation statistics.
+The LLM interpreter labels each latent feature automatically.
 
 <p align="center">
   <img src="docs/screenshots/feature_browser.png" alt="Feature Browser" width="600">
@@ -268,84 +209,43 @@ View activation histograms, density, and global context for each feature.
 
 ### 5. Explore the knowledge graph
 
-Visualize the semantic topology of extracted features -- a directed graph built from co-occurrence and correlation analysis via Maximum Spanning Tree.
+Visualize the semantic topology of extracted features.
 
 <p align="center">
   <img src="docs/screenshots/knowledge_graph.png" alt="Knowledge Graph" width="700">
 </p>
 
-### 6. Hybrid Search (v2)
-
-Search across documents using BM25 full-text, kNN semantic similarity, or a combined hybrid mode. Search features by label and description.
-
-Navigate to `/search/` or click **Search** in the navbar.
-
----
-
-## File Inventory (v2 changes)
-
-### New Files
-
-| File | Purpose |
-|---|---|
-| `Dockerfile` | Python 3.11-slim, pip install, collectstatic, Gunicorn |
-| `entrypoint.sh` | migrate + gunicorn (1 worker, 4 threads, 1200s timeout) |
-| `docker-compose.yml` | OpenSearch (default) + Django app (profile: full) |
-| `.dockerignore` | Excludes git, venv, media, weights, etc. |
-| `search/__init__.py` | Search app init |
-| `search/apps.py` | Django app config |
-| `search/client.py` | Singleton OpenSearch client + `is_available()` health check |
-| `search/indices.py` | Create/delete document & feature indices, embedding dim mapping |
-| `search/bulk_ops.py` | Bulk index/update, scroll helpers, single-doc lookups |
-| `search/queries.py` | BM25, kNN, hybrid, random docs, feature search |
-| `search/views.py` | Unified search page view |
-| `search/urls.py` | `/search/` route |
-| `search/management/commands/opensearch_init.py` | Create indices for existing data |
-| `search/management/commands/migrate_to_opensearch.py` | Migrate SQLite data to OpenSearch |
-| `templates/search/search.html` | Hybrid search UI |
-
-### Modified Files
-
-| File | Changes |
-|---|---|
-| `project/settings.py` | Added `STATIC_ROOT`, `OLLAMA_BASE_URL`, `OPENSEARCH_*` settings, `search` in `INSTALLED_APPS` |
-| `project/urls.py` | Added `search/` URL include |
-| `requirements.txt` | Added `gunicorn>=21.2`, `opensearch-py>=2.4`, `psutil>=5.9`, removed `transformers` |
-| `embeddings/embedders.py` | Replaced HuggingFace with `OllamaEmbedder` using `/api/embed` |
-| `embeddings/models.py` | Removed hardcoded model choices, added `opensearch_id` field to `Document` |
-| `embeddings/forms.py` | Dynamic model dropdown from `get_ollama_embedding_models()` |
-| `embeddings/services.py` | Dual-write: index docs + update embeddings in OpenSearch after SQLite |
-| `embeddings/views.py` | Delete OpenSearch index on dataset deletion |
-| `sae/trainer.py` | Load embeddings from OpenSearch scroll (fallback: SQLite) |
-| `explorer/interpreter.py` | Scan docs via OpenSearch scroll, random docs via `function_score`, index features after interpretation |
-| `explorer/statistics.py` | Batch iteration via OpenSearch scroll, bulk update features in OpenSearch after stats |
-| `explorer/views.py` | kNN similarity search, feature search via OpenSearch, embedding from OpenSearch |
-| `explorer/family_builder.py` | Load embeddings from OpenSearch for matrix computation |
-| `explorer/llm_utils.py` | Uses `settings.OLLAMA_BASE_URL` consistently |
-| `templates/base.html` | Added Search link in navbar |
-
 ---
 
 ## Supported Embedding Models
 
-PRISMA auto-detects embedding models from your local Ollama instance. Any model whose name contains `embed` or whose family is `bert` will appear in the dropdown.
+Any Ollama model whose name contains `embed` or whose family is `bert` is auto-detected. Dimensions are resolved automatically at runtime.
 
 | Model | Dimensions | Install |
 |---|---|---|
 | `nomic-embed-text` | 768 | `ollama pull nomic-embed-text` |
 | `bge-m3` | 1024 | `ollama pull bge-m3` |
 | `qwen3-embedding` | 1024-4096 | `ollama pull qwen3-embedding` |
-| `embeddinggemma` | 768 | `ollama pull embeddinggemma` |
 | `snowflake-arctic-embed` | 1024 | `ollama pull snowflake-arctic-embed` |
 | `mxbai-embed-large` | 1024 | `ollama pull mxbai-embed-large` |
 
-Dimensions are detected automatically at runtime.
-
 ---
 
-## Sample Dataset
+## Sample Data
 
-A ready-to-use sample of 1000 PubMed abstracts is included at `sample_data/pubmed_abstracts_1000.json` (source: [suolyer/pile_pubmed-abstracts](https://huggingface.co/datasets/suolyer/pile_pubmed-abstracts)). Upload it directly from the Embeddings page to get started.
+A ready-to-use sample of 1,000 PubMed abstracts is included at `sample_data/pubmed_abstracts_1000.json`. A larger 10,000-abstract dataset can be generated with:
+
+```bash
+pip install datasets
+python -c "
+from datasets import load_dataset
+import json
+ds = load_dataset('ccdv/pubmed-summarization', split='train', streaming=True)
+data = [{'id': str(i+1), 'text': row['abstract'].strip()}
+        for i, row in zip(range(10000), ds) if len(row['abstract']) > 100]
+json.dump(data, open('test_data.json', 'w'), indent=2)
+"
+```
 
 ---
 
@@ -354,8 +254,7 @@ A ready-to-use sample of 1000 PubMed abstracts is included at `sample_data/pubme
 - O'Neill, C. et al. (2024). *Disentangling Dense Embeddings with Sparse Autoencoders*. arXiv:2408.00657
 - Elhage, N. et al. (2022). *Toy Models of Superposition*. Transformer Circuits Thread
 - Roy, O. & Vetterli, M. (2007). *The Effective Rank: A Measure of Effective Dimensionality*. EUSIPCO
-- Wang, X. et al. (2024). *Disentangled Representation Learning*. arXiv:2211.11695
 
 ## License
 
-This project is released for academic and research purposes.
+MIT -- see [LICENSE](LICENSE).

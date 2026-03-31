@@ -5,6 +5,7 @@ from typing import IO
 from django.db import close_old_connections, connection
 from .models import Dataset, Document
 from .embedders import get_embedder
+from project.constants import DOC_PENDING, DOC_DONE, DOC_ERROR
 
 def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: str, model_name: str) -> Dataset:
     # ... (questo rimane uguale, non toccarlo) ...
@@ -29,7 +30,7 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
         if ext_id is None or text is None: continue
 
         docs_to_create.append(
-            Document(dataset=dataset, external_id=str(ext_id), text=str(text), status="pending")
+            Document(dataset=dataset, external_id=str(ext_id), text=str(text), status=DOC_PENDING)
         )
     Document.objects.bulk_create(docs_to_create, batch_size=500)
 
@@ -99,7 +100,7 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32):
         embedder = get_embedder(dataset.model_name)
 
         # 1. Recuperiamo TUTTI gli ID pending (lista statica) per evitare problemi di slicing dinamico
-        pending_ids = list(dataset.documents.filter(status="pending").values_list('id', flat=True))
+        pending_ids = list(dataset.documents.filter(status=DOC_PENDING).values_list('id', flat=True))
         total = len(pending_ids)
         logger.info(f"[Embeddings] Found {total} pending documents.")
         

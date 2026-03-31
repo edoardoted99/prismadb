@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prismadb"
+dynamic = ["version"]
+description = "Sparse Autoencoder explorer for LLM embeddings"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Edoardo Tedesco"},
+]
+classifiers = [
+    "Framework :: Django",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "django>=5.2",
+    "torch>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "matplotlib>=3.7",
+    "networkx>=3.0",
+    "requests>=2.28",
+    "gunicorn>=21.2",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+search = ["opensearch-py>=2.4"]
+api = ["djangorestframework>=3.15", "drf-spectacular>=0.27"]
+dev = ["ruff", "pytest", "pytest-django"]
+all = ["prismadb[search,api]"]
+
+[project.scripts]
+prismadb = "project.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "project.__version__.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["project*", "embeddings*", "sae*", "explorer*", "search*", "api*"]
+
+[tool.setuptools.package-data]
+"*" = ["templates/**/*.html", "static/**/*", "migrations/*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "project.settings"
+python_files = ["tests.py", "test_*.py"]

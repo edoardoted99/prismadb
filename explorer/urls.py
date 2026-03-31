@@ -34,6 +34,8 @@ urlpatterns = [
     path('system_status/logs/', views.get_logs, name='get_logs'),
     path('system_status/threads/', views.get_threads, name='get_threads'),
     path('system_status/stats/', views.get_system_stats, name='get_system_stats'),
+    path('system_status/services/', views.get_services_status, name='get_services_status'),
+    path('system_status/ollama_url/', views.update_ollama_url, name='update_ollama_url'),
     path('system_status/kill/<int:ident>/', views.kill_thread, name='kill_thread'),
     path('system_status/stop/<int:run_id>/', views.stop_interpretation, name='stop_interpretation'),
     

@@ -181,11 +181,6 @@ def feature_detail(request, run_id, feature_index):
                 'y': f_stat['variance_activation'],
                 'label': f_stat['label'] if f_stat['label'] else f"Feature {f_stat['feature_index']}"
             })
-    # -----------------------------------------------------------------
-    print(f"DEBUG: Scatter Data Length: {len(scatter_data)}")
-    if len(scatter_data) > 0:
-        print(f"DEBUG: First item: {scatter_data[0]}")
-
     return render(request, 'explorer/feature_detail.html', {
             'feature': feature,
             'run': feature.run,
@@ -483,7 +478,12 @@ from django.conf import settings
 from .task_status import TASK_PROGRESS
 
 def system_status(request):
-    return render(request, 'explorer/system_status.html')
+    return render(request, 'explorer/system_status.html', {
+        'ollama_url': settings.OLLAMA_BASE_URL,
+        'opensearch_host': settings.OPENSEARCH_HOST,
+        'opensearch_port': settings.OPENSEARCH_PORT,
+        'prisma_version': settings.PRISMA_VERSION,
+    })
 
 def get_logs(request):
     """Returns the last N lines of the log file."""
@@ -640,6 +640,90 @@ def get_system_stats(request):
         },
         'gpu': gpu_stats
     })
+
+
+def get_services_status(request):
+    """Check connectivity to Ollama and OpenSearch."""
+    import requests as req
+
+    # Ollama
+    ollama_url = settings.OLLAMA_BASE_URL
+    ollama_ok = False
+    ollama_models = []
+    try:
+        resp = req.get(f"{ollama_url}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            ollama_ok = True
+            data = resp.json()
+            ollama_models = [m['name'] for m in data.get('models', [])]
+    except Exception:
+        pass
+
+    # OpenSearch
+    opensearch_ok = False
+    opensearch_info = {}
+    try:
+        from search.client import is_available, get_client
+        opensearch_ok = is_available()
+        if opensearch_ok:
+            client = get_client()
+            health = client.cluster.health()
+            opensearch_info = {
+                'cluster_name': health.get('cluster_name', ''),
+                'status': health.get('status', ''),
+                'number_of_nodes': health.get('number_of_nodes', 0),
+            }
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'ollama': {
+            'connected': ollama_ok,
+            'url': ollama_url,
+            'models': ollama_models,
+        },
+        'opensearch': {
+            'connected': opensearch_ok,
+            'host': f"{settings.OPENSEARCH_HOST}:{settings.OPENSEARCH_PORT}",
+            **opensearch_info,
+        },
+        'version': settings.PRISMA_VERSION,
+    })
+
+
+def update_ollama_url(request):
+    """Update the Ollama base URL at runtime."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    import json
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    new_url = body.get('url', '').strip().rstrip('/')
+    if not new_url:
+        return JsonResponse({'success': False, 'error': 'URL is required'}, status=400)
+
+    # Update Django settings at runtime
+    settings.OLLAMA_BASE_URL = new_url
+
+    # Test connection
+    import requests as req
+    connected = False
+    try:
+        resp = req.get(f"{new_url}/api/tags", timeout=5)
+        connected = resp.status_code == 200
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'url': new_url,
+        'connected': connected,
+    })
+
 
 def kill_thread(request, ident):
     """Attempts to kill a thread by raising an exception in it."""

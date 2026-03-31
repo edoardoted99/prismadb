@@ -8,18 +8,12 @@ from sae.models import SAERun
 from sae.modules import SAE, SAEConfig, zscore_transform
 from .models import SAEFeature
 from .task_status import TASK_PROGRESS
+from project.utils import get_device
 import threading
 
 logger = logging.getLogger(__name__)
 
 N_BINS = 100
-
-def get_safe_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
 
 def calculate_statistics_pipeline(run_id):
     """
@@ -37,7 +31,7 @@ def calculate_statistics_pipeline(run_id):
 
     try:
         run = SAERun.objects.get(pk=run_id)
-        device = get_safe_device()
+        device = get_device()
         
         if not run.weights_file:
             logger.error("[Stats] No weights file.")

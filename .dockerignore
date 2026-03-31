@@ -22,10 +22,13 @@ db.sqlite3
 debug.log
 *.log
 media/
+staticfiles/
 docs/
+papers/
 thesis/
 .claude/
 *.pt
 *.pth
 *.bin
 *.safetensors
+sample_data/

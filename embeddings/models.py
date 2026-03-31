@@ -1,4 +1,5 @@
 from django.db import models
+from project.constants import DOC_PENDING, DOC_DONE, DOC_ERROR
 
 
 class Dataset(models.Model):
@@ -11,19 +12,17 @@ class Dataset(models.Model):
     def __str__(self):
         return self.name
 
-    # --- metodi di utilità per progress ---
-
     def total_docs(self):
         return self.documents.count()
 
     def done_docs(self):
-        return self.documents.filter(status="done").count()
+        return self.documents.filter(status=DOC_DONE).count()
 
     def error_docs(self):
-        return self.documents.filter(status="error").count()
+        return self.documents.filter(status=DOC_ERROR).count()
 
     def pending_docs(self):
-        return self.documents.filter(status="pending").count()
+        return self.documents.filter(status=DOC_PENDING).count()
 
     def progress_percent(self):
         total = self.total_docs()
@@ -34,17 +33,17 @@ class Dataset(models.Model):
 
 class Document(models.Model):
     STATUS_CHOICES = [
-        ("pending", "Pending"),
-        ("done", "Done"),
-        ("error", "Error"),
+        (DOC_PENDING, "Pending"),
+        (DOC_DONE, "Done"),
+        (DOC_ERROR, "Error"),
     ]
 
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="documents")
     external_id = models.CharField(max_length=255)
     text = models.TextField()
-    embedding = models.JSONField(null=True, blank=True)  # lista di float
+    embedding = models.JSONField(null=True, blank=True)
     opensearch_id = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DOC_PENDING)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

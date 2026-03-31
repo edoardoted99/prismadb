@@ -27,10 +27,15 @@ urlpatterns = [
     path("sae/", include("sae.urls")),
     path("explorer/", include("explorer.urls")),
     path("search/", include("search.urls")),
-    # ----------------------------------
-
     path("", home, name='home'),
 ]
+
+# Wire REST API if DRF is installed
+try:
+    import rest_framework  # noqa: F401
+    urlpatterns.insert(0, path("api/v1/", include("api.urls")))
+except ImportError:
+    pass
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,4 +1,4 @@
-# Default: solo OpenSearch. Django gira nativo su macOS (con MPS).
+# Default: solo OpenSearch. Django gira nativo (con MPS/GPU).
 # Per lo stack completo (senza GPU): docker compose --profile full up
 
 services:
@@ -22,18 +22,20 @@ services:
   # Profilo "full": app Django in container (CPU only, no MPS)
   app:
     profiles: ["full"]
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${PRISMA_VERSION:-dev}
+    image: prismadb:${PRISMA_VERSION:-latest}
     ports:
       - "8000:8000"
     volumes:
-      - ./db.sqlite3:/app/db.sqlite3
-      - ./media:/app/media
-      - huggingface_cache:/root/.cache/huggingface
+      - app_data:/app/data
     environment:
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-change-me-in-production}
-      - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OPENSEARCH_HOST=opensearch
       - OPENSEARCH_PORT=9200
     depends_on:
@@ -41,7 +43,8 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: unless-stopped
 
 volumes:
-  huggingface_cache:
   opensearch_data:
+  app_data:

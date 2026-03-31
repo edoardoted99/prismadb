@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from project.__version__ import __version__ as PRISMA_VERSION
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_URL = '/media/'
@@ -75,7 +77,8 @@ TEMPLATES = [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',  # <- per il warning W411
                 'django.contrib.auth.context_processors.auth',  # <- E402
-                'django.contrib.messages.context_processors.messages',  # <- E404
+                'django.contrib.messages.context_processors.messages',
+                'project.context_processors.version',
             ],
         },
     },
@@ -153,6 +156,35 @@ EXPLORER_OLLAMA_TIMEOUT = 1200 # 20 minuti
 OPENSEARCH_HOST = os.environ.get('OPENSEARCH_HOST', 'localhost')
 OPENSEARCH_PORT = int(os.environ.get('OPENSEARCH_PORT', '9200'))
 OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'False').lower() in ('true', '1', 'yes')
+
+# --- REST API (optional, requires djangorestframework) ---
+try:
+    import rest_framework  # noqa: F401
+    INSTALLED_APPS += [
+        'rest_framework',
+        'rest_framework.authtoken',
+        'drf_spectacular',
+        'api',
+    ]
+    REST_FRAMEWORK = {
+        'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+            'rest_framework.authentication.SessionAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+        'PAGE_SIZE': 50,
+    }
+    SPECTACULAR_SETTINGS = {
+        'TITLE': 'PRISMA SAE API',
+        'VERSION': PRISMA_VERSION,
+        'DESCRIPTION': 'REST API for Sparse Autoencoder exploration of LLM embeddings',
+    }
+except ImportError:
+    pass
 
 LOGGING = {
     'version': 1,
