@@ -157,33 +157,12 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Ollama Settings — env var > persisted runtime config > default
-def _load_runtime_setting(key, env_var, default):
-    """Load a setting: env var takes priority, then persisted config, then default."""
-    env_val = os.environ.get(env_var)
-    if env_val:
-        return env_val
-    try:
-        import json
-        cfg_path = PRISMADB_HOME / "runtime_config.json"
-        if cfg_path.exists():
-            cfg = json.loads(cfg_path.read_text())
-            if key in cfg:
-                return cfg[key]
-    except Exception:
-        pass
-    return default
-
-OLLAMA_BASE_URL = _load_runtime_setting('ollama_base_url', 'OLLAMA_BASE_URL', 'http://localhost:11434')
-
 # Explorer Settings
 EXPLORER_DOC_TRUNCATION_LIMIT = 1000
 EXPLORER_OLLAMA_TIMEOUT = 1200 # 20 minuti
 
-# OpenSearch Settings
-OPENSEARCH_HOST = os.environ.get('OPENSEARCH_HOST', 'localhost')
-OPENSEARCH_PORT = int(os.environ.get('OPENSEARCH_PORT', '9200'))
-OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'False').lower() in ('true', '1', 'yes')
+# Service settings (Ollama, OpenSearch) are stored in the DB via
+# explorer.models.AppSetting and accessed through project.utils.get_setting().
 
 # --- REST API (optional, requires djangorestframework) ---
 try:

@@ -380,8 +380,8 @@ def system_status(request):
     ollama_ok = False
     try:
         import requests as req
-        from django.conf import settings
-        resp = req.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5)
+        from project.utils import get_setting
+        resp = req.get(f"{get_setting('ollama_base_url')}/api/tags", timeout=5)
         ollama_ok = resp.status_code == 200
     except Exception:
         pass

@@ -13,7 +13,8 @@ class OllamaEmbedder:
 
     def __init__(self, model_name: str):
         self.model_name = model_name
-        self.base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
+        from project.utils import get_setting
+        self.base_url = get_setting('ollama_base_url')
         logger.info(f"[OllamaEmbedder] Using model: {model_name} at {self.base_url}")
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:

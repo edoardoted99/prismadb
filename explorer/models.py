@@ -89,3 +89,15 @@ class Interpretation(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.llm_model})"
+
+
+class AppSetting(models.Model):
+    """Key/value store for application configuration persisted in SQLite."""
+    key = models.CharField(max_length=128, unique=True, db_index=True)
+    value = models.TextField(default='')
+
+    class Meta:
+        ordering = ['key']
+
+    def __str__(self):
+        return f"{self.key} = {self.value}"

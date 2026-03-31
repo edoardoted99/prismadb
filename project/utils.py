@@ -1,6 +1,25 @@
-import json
+import os
+import logging
 
 import torch
+
+logger = logging.getLogger(__name__)
+
+# Default values for all app settings
+SETTING_DEFAULTS = {
+    'ollama_base_url': 'http://localhost:11434',
+    'opensearch_host': 'localhost',
+    'opensearch_port': '9200',
+    'opensearch_use_ssl': 'false',
+}
+
+# Map setting keys to environment variable names
+SETTING_ENV_VARS = {
+    'ollama_base_url': 'OLLAMA_BASE_URL',
+    'opensearch_host': 'OPENSEARCH_HOST',
+    'opensearch_port': 'OPENSEARCH_PORT',
+    'opensearch_use_ssl': 'OPENSEARCH_USE_SSL',
+}
 
 
 def get_device() -> str:
@@ -12,24 +31,29 @@ def get_device() -> str:
     return "cpu"
 
 
-def _runtime_config_path():
-    from django.conf import settings
-    return settings.PRISMADB_HOME / "runtime_config.json"
+def get_setting(key: str) -> str:
+    """Load a setting: env var > DB > default."""
+    # 1. Environment variable (highest priority)
+    env_var = SETTING_ENV_VARS.get(key)
+    if env_var:
+        env_val = os.environ.get(env_var)
+        if env_val:
+            return env_val
+
+    # 2. Database
+    try:
+        from explorer.models import AppSetting
+        obj = AppSetting.objects.filter(key=key).first()
+        if obj is not None:
+            return obj.value
+    except Exception:
+        pass  # DB not ready (e.g. during migrations)
+
+    # 3. Default
+    return SETTING_DEFAULTS.get(key, '')
 
 
-def load_runtime_config():
-    """Load persisted runtime config (returns dict, never fails)."""
-    path = _runtime_config_path()
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
-
-
-def save_runtime_config(config: dict):
-    """Merge config keys into the persisted runtime config file."""
-    current = load_runtime_config()
-    current.update(config)
-    _runtime_config_path().write_text(json.dumps(current, indent=2))
+def set_setting(key: str, value: str):
+    """Persist a setting to the database."""
+    from explorer.models import AppSetting
+    AppSetting.objects.update_or_create(key=key, defaults={'value': value})

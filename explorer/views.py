@@ -480,10 +480,11 @@ from .task_status import TASK_PROGRESS
 
 
 def system_status(request):
+    from project.utils import get_setting
     return render(request, 'explorer/system_status.html', {
-        'ollama_url': settings.OLLAMA_BASE_URL,
-        'opensearch_host': settings.OPENSEARCH_HOST,
-        'opensearch_port': settings.OPENSEARCH_PORT,
+        'ollama_url': get_setting('ollama_base_url'),
+        'opensearch_host': get_setting('opensearch_host'),
+        'opensearch_port': get_setting('opensearch_port'),
         'prismadb_version': settings.PRISMADB_VERSION,
     })
 
@@ -647,9 +648,10 @@ def get_system_stats(request):
 def get_services_status(request):
     """Check connectivity to Ollama and OpenSearch."""
     import requests as req
+    from project.utils import get_setting
 
     # Ollama
-    ollama_url = settings.OLLAMA_BASE_URL
+    ollama_url = get_setting('ollama_base_url')
     ollama_ok = False
     ollama_models = []
     try:
@@ -664,6 +666,8 @@ def get_services_status(request):
     # OpenSearch
     opensearch_ok = False
     opensearch_info = {}
+    os_host = get_setting('opensearch_host')
+    os_port = get_setting('opensearch_port')
     try:
         from search.client import get_client, is_available
         opensearch_ok = is_available()
@@ -686,7 +690,7 @@ def get_services_status(request):
         },
         'opensearch': {
             'connected': opensearch_ok,
-            'host': f"{settings.OPENSEARCH_HOST}:{settings.OPENSEARCH_PORT}",
+            'host': f"{os_host}:{os_port}",
             **opensearch_info,
         },
         'version': settings.PRISMADB_VERSION,
@@ -708,12 +712,8 @@ def update_ollama_url(request):
     if not new_url:
         return JsonResponse({'success': False, 'error': 'URL is required'}, status=400)
 
-    # Update Django settings at runtime
-    settings.OLLAMA_BASE_URL = new_url
-
-    # Persist to runtime config so it survives restarts
-    from project.utils import save_runtime_config
-    save_runtime_config({'ollama_base_url': new_url})
+    from project.utils import set_setting
+    set_setting('ollama_base_url', new_url)
 
     # Test connection
     import requests as req
@@ -727,6 +727,45 @@ def update_ollama_url(request):
     return JsonResponse({
         'success': True,
         'url': new_url,
+        'connected': connected,
+    })
+
+
+def update_opensearch(request):
+    """Update OpenSearch host and port at runtime."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+
+    import json
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+
+    host = body.get('host', '').strip()
+    port = body.get('port', '').strip()
+    if not host or not port:
+        return JsonResponse({'success': False, 'error': 'Host and port are required'}, status=400)
+
+    from project.utils import set_setting
+    set_setting('opensearch_host', host)
+    set_setting('opensearch_port', port)
+
+    # Reset singleton so next call picks up new settings
+    from search.client import reset_client
+    reset_client()
+
+    # Test connection
+    connected = False
+    try:
+        from search.client import is_available
+        connected = is_available()
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'host': f"{host}:{port}",
         'connected': connected,
     })
 

@@ -169,8 +169,14 @@
                         <span class="badge ms-auto" id="opensearch-badge">checking...</span>
                     </div>
                     <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" style="font-family: var(--font-mono); font-size: 0.8rem;"
-                               value="{{ opensearch_host }}:{{ opensearch_port }}" disabled>
+                        <input type="text" class="form-control" style="font-family: var(--font-mono); font-size: 0.8rem; flex: 2;"
+                               id="opensearch-host-input" value="{{ opensearch_host }}" placeholder="localhost">
+                        <span class="input-group-text" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-muted); font-size: 0.8rem;">:</span>
+                        <input type="text" class="form-control" style="font-family: var(--font-mono); font-size: 0.8rem; flex: 0 0 80px;"
+                               id="opensearch-port-input" value="{{ opensearch_port }}" placeholder="9200">
+                        <button class="btn btn-outline-secondary" type="button" id="opensearch-save-btn" title="Save & test connection">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
                     </div>
                     <div class="mt-2" id="opensearch-info-container" style="display:none;">
                         <small class="text-muted">Cluster:</small>
@@ -305,6 +311,9 @@
     const ollamaModelsList       = document.getElementById('ollama-models-list');
     const opensearchInfoContainer = document.getElementById('opensearch-info-container');
     const opensearchClusterInfo   = document.getElementById('opensearch-cluster-info');
+    const opensearchHostInput = document.getElementById('opensearch-host-input');
+    const opensearchPortInput = document.getElementById('opensearch-port-input');
+    const opensearchSaveBtn   = document.getElementById('opensearch-save-btn');
 
     let lastLogLine = 0;
     const activeFilters = new Set(['INFO', 'WARNING', 'ERROR', 'DEBUG']);
@@ -365,6 +374,24 @@
         .catch(() => setBadge(ollamaBadge, false));
     });
     ollamaUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') ollamaSaveBtn.click(); });
+
+    opensearchSaveBtn.addEventListener('click', () => {
+        const host = opensearchHostInput.value.trim();
+        const port = opensearchPortInput.value.trim();
+        if (!host || !port) return;
+        opensearchBadge.textContent = 'Testing...';
+        opensearchBadge.className = 'badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 ms-auto';
+        fetch(`{% url 'explorer:update_opensearch' %}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ host, port })
+        })
+        .then(r => r.json())
+        .then(data => { setBadge(opensearchBadge, data.connected); setTimeout(fetchServices, 500); })
+        .catch(() => setBadge(opensearchBadge, false));
+    });
+    opensearchHostInput.addEventListener('keydown', e => { if (e.key === 'Enter') opensearchSaveBtn.click(); });
+    opensearchPortInput.addEventListener('keydown', e => { if (e.key === 'Enter') opensearchSaveBtn.click(); });
 
     // ---- Resources ----
     function fetchStats() {
