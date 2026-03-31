@@ -73,7 +73,7 @@ pip install prismadb[all]
 ### Install from source
 
 ```bash
-git clone https://github.com/edoardoted99/PRISMA_v2.git
+git clone https://github.com/edoardoted99/prismadb.git
 cd PRISMA_v2
 pip install -e ".[all]"
 ```

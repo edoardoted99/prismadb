@@ -1,4 +1,5 @@
 import logging
+
 from .client import get_client
 from .indices import get_document_index_name, get_feature_index_name
 

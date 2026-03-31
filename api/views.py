@@ -1,36 +1,43 @@
-import threading
 import logging
+import threading
+
 import torch
-
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
-from embeddings.models import Dataset, Document
-from embeddings.services import ingest_json_and_create_dataset, generate_embeddings_for_dataset
 from embeddings.embedders import get_embedder
-from sae.models import SAERun
-from sae.trainer import train_sae_run
-from sae.modules import zscore_transform
-from explorer.models import SAEFeature, FeatureFamily
+from embeddings.models import Dataset
+from embeddings.services import generate_embeddings_for_dataset, ingest_json_and_create_dataset
 from explorer.interpreter import (
-    load_sae_model, interpret_single_feature, run_interpretation_pipeline,
+    interpret_single_feature,
+    load_sae_model,
+    run_interpretation_pipeline,
 )
+from explorer.models import FeatureFamily, SAEFeature
 from explorer.statistics import calculate_statistics_pipeline
 from explorer.task_status import TASK_PROGRESS
 from project.__version__ import __version__
-from project.constants import RUN_QUEUED, RUN_RUNNING, RUN_COMPLETED, DOC_DONE
+from project.constants import DOC_DONE, RUN_COMPLETED, RUN_QUEUED, RUN_RUNNING
+from sae.models import SAERun
+from sae.modules import zscore_transform
+from sae.trainer import train_sae_run
 
 from .serializers import (
-    DatasetSerializer, DocumentSerializer,
-    SAERunSerializer, SAERunCreateSerializer,
-    SAEFeatureSerializer, SAEFeatureDetailSerializer,
-    FeatureFamilySerializer, InterpretationSerializer,
-    InferenceRequestSerializer, SearchRequestSerializer,
+    DatasetSerializer,
+    DocumentSerializer,
+    FeatureFamilySerializer,
     HybridSearchRequestSerializer,
+    InferenceRequestSerializer,
+    InterpretationSerializer,
+    SAEFeatureDetailSerializer,
+    SAEFeatureSerializer,
+    SAERunCreateSerializer,
+    SAERunSerializer,
+    SearchRequestSerializer,
 )
 
 logger = logging.getLogger(__name__)

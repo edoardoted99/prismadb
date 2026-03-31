@@ -476,6 +476,23 @@
     {% block content %}{% endblock %}
   </main>
 
+  <footer style="border-top: 1px solid var(--border); padding: 1.5rem 0; margin-top: 3rem;">
+    <div class="container-root py-0 d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small">PRISM<span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">&#9651;</span></span>
+        <span class="text-muted small" style="opacity: 0.5;">v{{ PRISMA_VERSION }}</span>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <a href="https://github.com/edoardoted99/PRISMA_v2" class="text-muted small" style="text-decoration: none;" target="_blank">
+          <i class="bi bi-github me-1"></i>GitHub
+        </a>
+        <a href="https://edoardotedesco.it" class="text-muted small" style="text-decoration: none;" target="_blank">
+          edoardotedesco.it
+        </a>
+      </div>
+    </div>
+  </footer>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   {% block extra_js %}{% endblock %}
 </body>

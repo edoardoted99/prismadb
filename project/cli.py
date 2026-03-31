@@ -32,8 +32,8 @@ def cli():
 def init():
     """Initialize database and OpenSearch indices."""
     _setup_django()
-    from django.core.management import call_command
     from django.conf import settings
+    from django.core.management import call_command
 
     click.echo(f"Data directory: {settings.PRISMADB_HOME}")
     click.echo("Running migrations...")
@@ -68,7 +68,7 @@ def ingest(file, model, name, description, embed, batch_size):
     FILE must be a JSON file: [{"id": "1", "text": "..."}, ...]
     """
     _setup_django()
-    from embeddings.services import ingest_json_and_create_dataset, generate_embeddings_for_dataset
+    from embeddings.services import generate_embeddings_for_dataset, ingest_json_and_create_dataset
 
     if name is None:
         name = os.path.splitext(os.path.basename(file))[0]
@@ -113,10 +113,10 @@ def ingest(file, model, name, description, embed, batch_size):
 def train(dataset, expansion, top_k, epochs, lr, batch_size, alpha_aux):
     """Train a Sparse Autoencoder on a dataset's embeddings."""
     _setup_django()
-    from embeddings.models import Dataset, Document
+    from embeddings.models import Dataset
+    from project.constants import DOC_DONE, RUN_QUEUED
     from sae.models import SAERun
     from sae.trainer import train_sae_run
-    from project.constants import DOC_DONE, RUN_QUEUED
 
     ds = Dataset.objects.get(pk=dataset)
     first_doc = ds.documents.filter(status=DOC_DONE).first()
@@ -204,9 +204,13 @@ def search(query, dataset, mode, top_k):
         click.echo("Error: OpenSearch is not available. Install prismadb[search] and start OpenSearch.", err=True)
         sys.exit(1)
 
-    from search.queries import search_documents_bm25, search_similar_documents, search_documents_hybrid
-    from embeddings.models import Dataset
     from embeddings.embedders import get_embedder
+    from embeddings.models import Dataset
+    from search.queries import (
+        search_documents_bm25,
+        search_documents_hybrid,
+        search_similar_documents,
+    )
 
     results = []
 

@@ -1,5 +1,6 @@
 from django.db import models
-from project.constants import DOC_PENDING, DOC_DONE, DOC_ERROR
+
+from project.constants import DOC_DONE, DOC_ERROR, DOC_PENDING
 
 
 class Dataset(models.Model):

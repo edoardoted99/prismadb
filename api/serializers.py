@@ -1,7 +1,8 @@
 from rest_framework import serializers
+
 from embeddings.models import Dataset, Document
+from explorer.models import FeatureFamily, Interpretation, SAEFeature
 from sae.models import SAERun
-from explorer.models import SAEFeature, Interpretation, FeatureFamily
 
 
 class DatasetSerializer(serializers.ModelSerializer):

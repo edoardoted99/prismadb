@@ -1,22 +1,26 @@
 # sae/trainer.py
-import time
-import torch
 import io
+import time
+
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-from torch.utils.data import TensorDataset, DataLoader
+import torch
 from django.core.files.base import ContentFile
+from torch.utils.data import DataLoader, TensorDataset
+
 from .models import SAERun
-from .modules import SAE, SAEConfig, sae_loss_func, get_device, compute_zscore_stats, zscore_transform
+from .modules import (
+    SAE,
+    SAEConfig,
+    compute_zscore_stats,
+    get_device,
+    sae_loss_func,
+    zscore_transform,
+)
 
 # Backend non interattivo per il server
 matplotlib.use('Agg')
 
-import matplotlib.pyplot as plt
-import torch
-import io
-from django.core.files.base import ContentFile
 
 def generate_heatmap(run, model, X_data, device):
     """
@@ -26,7 +30,7 @@ def generate_heatmap(run, model, X_data, device):
         # --- 1. Preparazione Dati (Invariata) ---
         MAX_SAMPLES = 10000
         n_samples = min(MAX_SAMPLES, len(X_data))
-        
+
         # Prendi i primi n_samples (o randomizza se preferisci scommentando la riga sotto)
         # idx = torch.randperm(len(X_data))[:n_samples]
         # X_sample = X_data[idx].to(device)
@@ -34,17 +38,17 @@ def generate_heatmap(run, model, X_data, device):
 
         model.eval()
         with torch.no_grad():
-            _, h, _ = model(X_sample) 
+            _, h, _ = model(X_sample)
             h = h.cpu()
 
         # Ordinamento per attività totale dei neuroni
         activation_score = h.sum(dim=0)
         indices = torch.argsort(activation_score, descending=True)
-        
+
         # Prendiamo i top M neuroni
         TOP_M = min(500, h.shape[1])
         top_indices = indices[:TOP_M]
-        
+
         h_sorted = h[:, top_indices].numpy()
 
         # Normalizzazione per riga (per visualizzare meglio i pattern relativi)
@@ -53,12 +57,12 @@ def generate_heatmap(run, model, X_data, device):
         h_norm = (h_sorted - mn) / (mx - mn + 1e-9)
 
         # --- 2. Plotting con Stile Dark ---
-        
+
         # Usiamo il contesto 'dark_background' per invertire colori assi e testo automaticamente
         with plt.style.context('dark_background'):
-            
+
             fig, ax = plt.subplots(figsize=(10, 6), constrained_layout=True)
-            
+
             # Forziamo lo sfondo a nero puro (a volte il default è grigio scuro)
             fig.patch.set_facecolor('black')
             ax.set_facecolor('black')
@@ -66,12 +70,12 @@ def generate_heatmap(run, model, X_data, device):
             # Disegno la heatmap
             # 'inferno' o 'magma' sono ottime su sfondo nero perché partono dal nero
             im = ax.imshow(h_norm, aspect="auto", interpolation="nearest", cmap="inferno")
-            
+
             # Titoli e label (saranno bianchi grazie allo stile)
             ax.set_title(f"Sparsity Heatmap: Chunk x Top-{TOP_M} Neurons\n(Run #{run.id})", color='white', fontsize=12, fontweight='bold')
             ax.set_xlabel("Active Neurons", color='white')
             ax.set_ylabel("Text Chunks", color='white')
-            
+
             # Colorbar personalizzata
             cbar = fig.colorbar(im, ax=ax)
             cbar.set_label("Activation (Normalized)", color='white')
@@ -85,7 +89,7 @@ def generate_heatmap(run, model, X_data, device):
             fig.savefig(buffer, format='png', dpi=150, facecolor='black')
             plt.close(fig)
             buffer.seek(0)
-            
+
             run.sparsity_heatmap.save(f"heatmap_run_{run.id}.png", ContentFile(buffer.read()), save=False)
 
     except Exception as e:
@@ -116,12 +120,12 @@ def train_sae_run(run_id: int):
 
         if not docs_vectors:
             docs_vectors = list(run.dataset.documents.filter(status='done').values_list('embedding', flat=True))
-        
+
         # 2. Flattening (Schiacciamento)
         flat_embeddings = []
         for doc_vecs in docs_vectors:
             if not doc_vecs: continue
-            
+
             # Gestione robusta: controlla se è lista di liste o lista di float (vecchio formato)
             if isinstance(doc_vecs, list) and len(doc_vecs) > 0:
                 if isinstance(doc_vecs[0], list):
@@ -130,7 +134,7 @@ def train_sae_run(run_id: int):
                 elif isinstance(doc_vecs[0], (float, int)):
                     # Caso legacy: Documento -> Vettore singolo
                     flat_embeddings.append(doc_vecs)
-        
+
         if not flat_embeddings:
             raise ValueError("No valid embeddings found in dataset.")
 
@@ -142,23 +146,23 @@ def train_sae_run(run_id: int):
         # 4. Z-Score Normalization
         mean, std = compute_zscore_stats(X)
         X_std = zscore_transform(X, mean, std)
-        
+
         # 5. Setup Modello
         device = get_device()
         d_latent = run.input_dim * run.expansion_factor
-        
+
         cfg = SAEConfig(
-            d_in=run.input_dim, 
-            d_latent=d_latent, 
-            k=run.k_sparsity, 
-            alpha_aux=run.alpha_aux, 
-            lr=run.learning_rate, 
+            d_in=run.input_dim,
+            d_latent=d_latent,
+            k=run.k_sparsity,
+            alpha_aux=run.alpha_aux,
+            lr=run.learning_rate,
             device=device
         )
-        
+
         model = SAE(cfg).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
-        
+
         dataset = TensorDataset(X_std)
         loader = DataLoader(dataset, batch_size=run.batch_size, shuffle=True)
 
@@ -166,26 +170,26 @@ def train_sae_run(run_id: int):
         print(f"[Run #{run.id}] Training started...")
         model.train()
         log_history = []
-        
+
         for epoch in range(1, run.epochs + 1):
             model.start_epoch()
             epoch_loss = 0.0
             steps = 0
-            
+
             for (xb,) in loader:
                 xb = xb.to(device)
-                
+
                 out = sae_loss_func(model, xb, alpha_aux=cfg.alpha_aux)
-                
+
                 optimizer.zero_grad()
                 out.total.backward()
                 optimizer.step()
-                
+
                 epoch_loss += out.total.item()
                 steps += 1
-            
+
             avg_loss = epoch_loss / steps if steps > 0 else 0
-            
+
             print(f"[Run #{run.id}] Epoch {epoch} - Loss: {avg_loss:.4f}")
             log_history.append({"epoch": epoch, "loss": round(avg_loss, 5), "timestamp": time.time()})
             run.training_log = log_history
@@ -198,15 +202,15 @@ def train_sae_run(run_id: int):
         checkpoint = {
             "model_state": model.state_dict(),
             "config": cfg.__dict__,
-            "zscore_mean": mean, 
+            "zscore_mean": mean,
             "zscore_std": std
         }
-        
+
         buffer = io.BytesIO()
         torch.save(checkpoint, buffer)
         buffer.seek(0)
         run.weights_file.save(f"sae_run_{run_id}_final.pt", ContentFile(buffer.read()), save=False)
-        
+
         run.final_loss = log_history[-1]['loss'] if log_history else 0
         run.status = 'completed'
         run.save()

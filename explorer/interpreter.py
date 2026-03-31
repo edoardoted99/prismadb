@@ -1,17 +1,18 @@
-import torch
 import heapq
-import time
-import random
-import traceback
 import logging
-from django.conf import settings
-from sae.models import SAERun
-from .models import SAEFeature, Interpretation
-from sae.modules import SAE, SAEConfig, zscore_transform
-from .llm_utils import get_ollama_response
-from .task_status import TASK_PROGRESS
-from project.utils import get_device
 import threading
+import time
+
+import torch
+from django.conf import settings
+
+from project.utils import get_device
+from sae.models import SAERun
+from sae.modules import SAE, SAEConfig, zscore_transform
+
+from .llm_utils import get_ollama_response
+from .models import Interpretation, SAEFeature
+from .task_status import TASK_PROGRESS
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +22,20 @@ def load_sae_model(run, device):
     if not run.weights_file:
         logger.error("[Interpreter] ERROR: No weights file associated with this Run.")
         return None, None, None
-    
+
     try:
         checkpoint = torch.load(run.weights_file.path, map_location=device)
         cfg_dict = checkpoint['config']
         cfg_dict['device'] = device
-        
+
         cfg = SAEConfig(**cfg_dict)
         model = SAE(cfg).to(device)
         model.load_state_dict(checkpoint['model_state'])
         model.eval()
-        
+
         mean = checkpoint['zscore_mean'].to(device)
         std = checkpoint['zscore_std'].to(device)
-        
+
         logger.info(f"[Interpreter] Model loaded successfully. Latent dim: {cfg.d_latent}")
         return model, mean, std
     except Exception as e:
@@ -63,7 +64,7 @@ def scan_single_feature_examples(run, feature_index, k=10):
     try:
         from search.client import is_available
         if is_available():
-            from search.bulk_ops import scroll_documents_in_batches, count_documents
+            from search.bulk_ops import count_documents, scroll_documents_in_batches
             total = count_documents(run.dataset_id)
             use_opensearch = True
             logger.info(f"[Interpreter] Scanning {total} documents via OpenSearch for feature {feature_index}...")
@@ -235,20 +236,20 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
     """
     tid = threading.get_ident()
     TASK_PROGRESS[tid] = {
-        'progress': 0, 
+        'progress': 0,
         'message': f'Initializing interpretation for Feature {feature_id}...',
         'start_time': time.time()
     }
 
     logger.info(f"[Interpreter] Starting single interpretation for Feature ID {feature_id}")
-    
+
     if not prompt:
         from .llm_utils import DEFAULT_SYSTEM_PROMPT
         prompt = DEFAULT_SYSTEM_PROMPT
     try:
         feature = SAEFeature.objects.get(pk=feature_id)
         run = feature.run
-        
+
         # 0. REPLACE LOGIC: Delete old active interpretation if exists
         if hasattr(feature, 'active_interpretation') and feature.active_interpretation:
             logger.info(f"[Interpreter] Deleting old active interpretation #{feature.active_interpretation.id}")
@@ -258,15 +259,15 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
         # 1. CONTROLLO ESEMPI POSITIVI
         TASK_PROGRESS[tid].update({'progress': 10, 'message': 'Scanning for positive examples...'})
         if not feature.example_docs:
-            logger.info(f"[Interpreter] No cached examples. Launching scan...")
+            logger.info("[Interpreter] No cached examples. Launching scan...")
             # Fetch more examples (e.g. 50) to show in the UI, even if we only use k_pos for interpretation
             found_docs = scan_single_feature_examples(run, feature.feature_index, k=50)
-            
+
             if not found_docs:
                 logger.warning(f"[Interpreter] DEAD NEURON: Feature {feature.feature_index} has 0 activations.")
                 TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Failed: Dead Neuron (0 activations).'})
                 return False
-            
+
             feature.example_docs = found_docs
             feature.max_activation = found_docs[0]['act']
             feature.save()
@@ -284,7 +285,7 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
         for doc in pos_examples:
             clean_txt = doc['text'].replace('\n', ' ').strip()
             prompt_text += f"- [Act: {doc['act']:.2f}] {clean_txt}\n"
-        
+
         prompt_text += "\nNegative Examples (Zero Activation):\n"
         if neg_examples:
             for doc in neg_examples:
@@ -299,14 +300,14 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
         logger.info(f"[Interpreter] Prompt sent to Ollama:\n{prompt_text}")
         start_time = time.time()
         result = get_ollama_response(
-            user_message=prompt_text, 
+            user_message=prompt_text,
             system_message=prompt,
             model=model_name,
             temperature=temperature
         )
         duration = time.time() - start_time
         logger.info(f"[Interpreter] Ollama responded in {duration:.2f}s. Result: {result}")
-        
+
         if result:
             TASK_PROGRESS[tid].update({'progress': 90, 'message': 'Saving interpretation...'})
             interp = Interpretation.objects.create(
@@ -318,23 +319,23 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
                 temperature=temperature,
                 evidence_docs={'positive': pos_examples}
             )
-            
+
             feature.label = result.get('label', 'Unknown')
             feature.description = result.get('description', '')
             feature.active_interpretation = interp # Link new interpretation
             feature.save()
             logger.info("[Interpreter] Interpretation saved successfully.")
-            
+
             TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Done.'})
             return True
         else:
             logger.error("[Interpreter] ERROR: Ollama returned None or invalid JSON.")
             TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Failed: No response from Ollama.'})
-            
+
     except Exception as e:
         logger.error(f"[Interpreter] CRITICAL ERROR in interpret_single_feature: {e}", exc_info=True)
         TASK_PROGRESS[tid].update({'progress': 100, 'message': f'Error: {e}'})
-        
+
     return False
 
 # Global control dictionary: {run_id: 'STOP'}
@@ -356,7 +357,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
     # --- PROGRESS INIT ---
     tid = threading.get_ident()
     TASK_PROGRESS[tid] = {
-        'progress': 0, 
+        'progress': 0,
         'message': 'Initializing...',
         'start_time': time.time(),
         'run_id': run_id  # Add run_id for UI control
@@ -366,11 +367,11 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
     if not custom_system_prompt:
         from .llm_utils import DEFAULT_SYSTEM_PROMPT
         custom_system_prompt = DEFAULT_SYSTEM_PROMPT
-    
+
     try:
         run = SAERun.objects.get(pk=run_id)
         model, mean, std = load_sae_model(run, device)
-        
+
         if not model:
             logger.error("[Interpreter] ABORT: Could not load model.")
             return
@@ -386,7 +387,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
         try:
             from search.client import is_available
             if is_available():
-                from search.bulk_ops import scroll_documents_in_batches, count_documents
+                from search.bulk_ops import count_documents, scroll_documents_in_batches
                 total_docs = count_documents(run.dataset_id)
                 use_opensearch = True
         except Exception:
@@ -434,7 +435,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
                                                            fields=['django_id', 'text', 'embedding']):
                 if TASK_CONTROL.get(run_id) == 'STOP':
-                    logger.info(f"[Interpreter] STOP signal received during scan. Aborting.")
+                    logger.info("[Interpreter] STOP signal received during scan. Aborting.")
                     if tid in TASK_PROGRESS:
                         TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
                     return
@@ -453,7 +454,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             doc_qs = run.dataset.documents.filter(status='done').order_by('id')
             for offset in range(0, total_docs, batch_size):
                 if TASK_CONTROL.get(run_id) == 'STOP':
-                    logger.info(f"[Interpreter] STOP signal received during scan. Aborting.")
+                    logger.info("[Interpreter] STOP signal received during scan. Aborting.")
                     if tid in TASK_PROGRESS:
                         TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
                     return
@@ -479,9 +480,9 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             if heap:
                 max_act = max(item[0] for item in heap)
                 feature_stats.append((max_act, f_idx))
-        
+
         logger.info(f"[Interpreter] Found {len(feature_stats)} features with at least one activation.")
-        
+
         if not feature_stats:
             logger.warning("[Interpreter] WARNING: No activations found > 0.001. Check normalization/model.")
             return
@@ -491,12 +492,12 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
 
         # --- 3. LLM LOOP ---
         success_count = 0
-        skipped_count = 0 
-        
+        skipped_count = 0
+
         for i, (max_act, f_idx) in enumerate(feature_stats):
             # CHECK FOR STOP SIGNAL
             if TASK_CONTROL.get(run_id) == 'STOP':
-                logger.info(f"[Interpreter] STOP signal received. Pausing gracefully.")
+                logger.info("[Interpreter] STOP signal received. Pausing gracefully.")
                 if tid in TASK_PROGRESS:
                     TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
                 break
@@ -504,7 +505,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             if success_count >= features_to_analyze:
                 logger.info(f"[Interpreter] Reached target of {features_to_analyze} new interpretations. Stopping.")
                 break
-            
+
             # --- LOGICA SKIP FEATURE ---
             existing_feature = SAEFeature.objects.filter(run=run, feature_index=f_idx).first()
             if existing_feature and existing_feature.label:
@@ -514,26 +515,26 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                     skipped_count += 1
                     continue
             # ---------------------------
-            
+
             logger.info(f"\n--- Feature {f_idx} ({i+1}/{len(feature_stats)}) Max Act: {max_act:.2f} ---")
-            
+
             # --- PROGRESS UPDATE (50-100%) ---
             # Use success_count to track progress towards the goal
             current_feat_pct = int((success_count / features_to_analyze) * 50)
             total_pct = 50 + current_feat_pct
-            
+
             # Ensure we don't exceed 99% until done
             if total_pct >= 100: total_pct = 99
-            
+
             if tid in TASK_PROGRESS:
                 TASK_PROGRESS[tid].update({
-                    'progress': total_pct, 
+                    'progress': total_pct,
                     'message': f'Interpreting Feature {f_idx} (Success: {success_count}/{features_to_analyze})...'
                 })
             # ---------------------------------
-            
+
             pos_examples = sorted(top_activations[f_idx], key=lambda x: x[0], reverse=True)[:k_pos]
-            
+
             # Recupero Negativi
             neg_examples = get_negative_examples(run, f_idx, k=k_neg, model=model, mean=mean, std=std)
 
@@ -542,7 +543,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             for val, did, txt in pos_examples:
                 clean_txt = txt.replace('\n', ' ').strip()
                 prompt_text += f"- [Act: {val:.2f}] {clean_txt}\n"
-            
+
             prompt_text += "\nNegative Examples (Zero Activation):\n"
             if neg_examples:
                 for doc in neg_examples:
@@ -554,10 +555,10 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             logger.info(f"   > Sending request to Ollama ({ollama_model})...")
             start_ts = time.time()
             result = get_ollama_response(prompt_text, custom_system_prompt, model=ollama_model, temperature=temp)
-            
+
             if result:
                 formatted_docs = [{'id': pid, 'act': float(pval), 'text': ptxt} for pval, pid, ptxt in pos_examples]
-                
+
                 feat_obj, _ = SAEFeature.objects.update_or_create(
                     run=run,
                     feature_index=f_idx,
@@ -568,7 +569,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                         'example_docs': formatted_docs
                     }
                 )
-                
+
                 interp = Interpretation.objects.create(
                     feature=feat_obj,
                     label=result.get('label', 'Unknown'),
@@ -578,7 +579,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                     temperature=temp,
                     evidence_docs={'positive': formatted_docs}
                 )
-                
+
                 # LINK ACTIVE INTERPRETATION
                 feat_obj.active_interpretation = interp
                 feat_obj.save()
@@ -604,10 +605,10 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 logger.info(f"   > SUCCESS: {result.get('label')} ({time.time()-start_ts:.1f}s)")
                 success_count += 1
             else:
-                logger.error(f"   > FAILED: No response from Ollama.")
+                logger.error("   > FAILED: No response from Ollama.")
 
         logger.info(f"\n[Interpreter] Batch Pipeline Complete. Interpreted: {success_count}. Skipped: {skipped_count}.")
-        
+
     except Exception as e:
         logger.error(f"\n[Interpreter] CRITICAL PIPELINE ERROR: {e}", exc_info=True)
         # --- PROGRESS ERROR ---

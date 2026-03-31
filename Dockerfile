@@ -14,7 +14,7 @@ ARG VERSION=dev
 LABEL org.opencontainers.image.version=$VERSION
 LABEL org.opencontainers.image.title="prismadb"
 LABEL org.opencontainers.image.description="Sparse Autoencoder explorer for LLM embeddings"
-LABEL org.opencontainers.image.source="https://github.com/edoardoted99/PRISMA_v2"
+LABEL org.opencontainers.image.source="https://github.com/edoardoted99/prismadb"
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

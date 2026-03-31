@@ -1,12 +1,17 @@
 from django.core.management.base import BaseCommand
+
 from embeddings.models import Dataset, Document
-from sae.models import SAERun
 from explorer.models import SAEFeature
-from search.indices import (
-    create_document_index, create_feature_index, get_embedding_dim,
-)
+from sae.models import SAERun
 from search.bulk_ops import (
-    bulk_index_documents, bulk_update_embeddings, bulk_index_features,
+    bulk_index_documents,
+    bulk_index_features,
+    bulk_update_embeddings,
+)
+from search.indices import (
+    create_document_index,
+    create_feature_index,
+    get_embedding_dim,
 )
 
 

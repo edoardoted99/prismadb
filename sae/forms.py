@@ -1,11 +1,13 @@
 # sae/forms.py
 from django import forms
+
 from .models import SAERun
+
 
 class SAERunForm(forms.ModelForm):
     class Meta:
         model = SAERun
-        fields = ['dataset', 'expansion_factor', 'k_sparsity', 'alpha_aux', 
+        fields = ['dataset', 'expansion_factor', 'k_sparsity', 'alpha_aux',
                   'learning_rate', 'batch_size', 'epochs']
         widgets = {
             'dataset': forms.Select(attrs={'class': 'form-select'}),

@@ -1,8 +1,9 @@
 # explorer/llm_utils.py
 import json
-import requests
-import time
 import re
+import time
+
+import requests
 from django.conf import settings
 
 OLLAMA_BASE = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
@@ -70,7 +71,7 @@ def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
     Invia una richiesta a Ollama gestendo errori, JSON parsing e parametri avanzati.
     """
     url = f"{base_url}/api/chat"
-    
+
     payload = {
         "model": model,
         "messages": [
@@ -93,7 +94,7 @@ def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
             response.raise_for_status()
             data = response.json()
             content = data.get("message", {}).get("content", "")
-            
+
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
@@ -101,9 +102,9 @@ def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
                 match = re.search(r'\{.*\}', content, re.DOTALL)
                 if match:
                     return json.loads(match.group())
-                
+
         except Exception as e:
             print(f"[LLM Error] Attempt {attempt+1}/{retries+1}: {e}")
             time.sleep(2)
-    
+
     return None

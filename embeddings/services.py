@@ -2,10 +2,14 @@
 import json
 import time
 from typing import IO
+
 from django.db import close_old_connections, connection
-from .models import Dataset, Document
+
+from project.constants import DOC_PENDING
+
 from .embedders import get_embedder
-from project.constants import DOC_PENDING, DOC_DONE, DOC_ERROR
+from .models import Dataset, Document
+
 
 def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: str, model_name: str) -> Dataset:
     # ... (questo rimane uguale, non toccarlo) ...
@@ -41,8 +45,8 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
     try:
         from search.client import is_available
         if is_available():
-            from search.indices import create_document_index, get_embedding_dim
             from search.bulk_ops import bulk_index_documents
+            from search.indices import create_document_index, get_embedding_dim
 
             dim = get_embedding_dim(model_name)
             if dim:
@@ -73,6 +77,7 @@ def ingest_json_and_create_dataset(file_obj: IO[bytes], name: str, description: 
 
 import logging
 import threading
+
 from explorer.task_status import TASK_PROGRESS
 
 logger = logging.getLogger(__name__)
@@ -87,16 +92,16 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progr
 
     tid = threading.get_ident()
     TASK_PROGRESS[tid] = {'progress': 0, 'message': 'Starting...', 'start_time': time.time()}
-    
+
     logger.info(f"[Embeddings] Starting generation for Dataset #{dataset_id}")
-    
+
     try:
         # Ricarichiamo il dataset dentro il thread
         dataset = Dataset.objects.get(pk=dataset_id)
-        
+
         # Update status
         TASK_PROGRESS[tid]['message'] = f"Loading model {dataset.model_name}..."
-        
+
         # get_embedder now returns an INSTANCE
         embedder = get_embedder(dataset.model_name)
 
@@ -104,30 +109,30 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progr
         pending_ids = list(dataset.documents.filter(status=DOC_PENDING).values_list('id', flat=True))
         total = len(pending_ids)
         logger.info(f"[Embeddings] Found {total} pending documents.")
-        
+
         TASK_PROGRESS[tid]['message'] = f"Processing {total} documents..."
 
         # 2. Iteriamo a blocchi sulla lista fissa di ID
         for i in range(0, total, batch_size):
             batch_ids = pending_ids[i : i + batch_size]
-            
+
             # Recuperiamo gli oggetti Document reali
             docs = list(Document.objects.filter(id__in=batch_ids).order_by('id'))
-            if not docs: 
+            if not docs:
                 continue
 
             texts = [d.text for d in docs]
-            
+
             try:
                 # Questa chiamata ora ritorna LISTA DI LISTE (chunks) grazie al nuovo embedder
-                embeddings = embedder.embed_texts(texts) 
-                
+                embeddings = embedder.embed_texts(texts)
+
                 # Salvataggio
                 for doc, emb in zip(docs, embeddings):
                     doc.embedding = emb # Django JSONField gestisce liste di liste automaticamente
                     doc.status = "done"
                     doc.error_message = ""
-                
+
                 # Bulk update per velocità
                 Document.objects.bulk_update(docs, ["embedding", "status", "error_message"])
 
@@ -135,8 +140,8 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progr
                 try:
                     from search.client import is_available
                     if is_available():
+                        from search.bulk_ops import bulk_index_documents, bulk_update_embeddings
                         from search.indices import create_document_index, get_document_index_name
-                        from search.bulk_ops import bulk_update_embeddings, bulk_index_documents
 
                         # Ensure index exists (deferred creation for Ollama models)
                         client = None
@@ -174,7 +179,7 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progr
                             bulk_update_embeddings(dataset.id, os_updates)
                 except Exception as os_err:
                     logger.warning(f"[OpenSearch] Failed to update embeddings: {os_err}")
-                
+
                 processed_count = i + len(docs)
                 progress_pct = int((processed_count / total) * 100)
 
@@ -186,7 +191,7 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progr
 
                 if progress_callback:
                     progress_callback(processed_count, total)
-                
+
             except Exception as e:
                 logger.error(f"[Embeddings] Batch Error: {e}")
                 # Segna come errore ma non fermare tutto il processo

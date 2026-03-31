@@ -1,11 +1,12 @@
-import threading # <--- Assicurati che questa riga ci sia!
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+import threading  # <--- Assicurati che questa riga ci sia!
 
-from .models import Dataset, Document
+from django.contrib import messages
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.shortcuts import get_object_or_404, redirect, render
+
 from .forms import UploadDatasetForm
-from .services import ingest_json_and_create_dataset, generate_embeddings_for_dataset
+from .models import Dataset, Document
+from .services import generate_embeddings_for_dataset, ingest_json_and_create_dataset
 
 
 def dataset_list(request):
@@ -14,10 +15,10 @@ def dataset_list(request):
 
 def dataset_detail(request, pk):
     dataset = get_object_or_404(Dataset, pk=pk)
-    # dataset.refresh_from_db() 
-    
+    # dataset.refresh_from_db()
+
     doc_qs = dataset.documents.all().order_by("id")
-    
+
     paginator = Paginator(doc_qs, 50)
     page_number = request.GET.get("page", 1)
 
@@ -62,7 +63,7 @@ def upload_dataset(request):
 
 def start_generation(request, pk):
     dataset = get_object_or_404(Dataset, pk=pk)
-    
+
     # Lancio in thread per evitare timeout HTTP
     t = threading.Thread(
         target=generate_embeddings_for_dataset,
@@ -104,7 +105,7 @@ def delete_dataset(request, pk):
         dataset.delete()
         messages.success(request, f"Dataset '{name}' has been deleted.")
         return redirect("embeddings:dataset_list")
-    
+
     # Fallback se chiamata via GET (redirect senza fare nulla)
     return redirect("embeddings:dataset_detail", pk=pk)
 

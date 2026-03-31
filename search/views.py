@@ -1,10 +1,14 @@
-from django.shortcuts import render, get_object_or_404
-from embeddings.models import Dataset
+from django.shortcuts import get_object_or_404, render
+
 from embeddings.embedders import get_embedder
+from embeddings.models import Dataset
 from sae.models import SAERun
+
 from .queries import (
-    search_documents_bm25, search_similar_documents,
-    search_documents_hybrid, search_features,
+    search_documents_bm25,
+    search_documents_hybrid,
+    search_features,
+    search_similar_documents,
 )
 
 

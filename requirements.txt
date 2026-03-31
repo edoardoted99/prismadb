@@ -12,3 +12,4 @@ opensearch-py>=2.4
 psutil>=5.9
 djangorestframework>=3.15
 drf-spectacular>=0.27
+whitenoise>=6.5

@@ -1,5 +1,6 @@
 # sae/modules.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -75,15 +76,15 @@ class SAE(nn.Module):
     def forward(self, x: torch.Tensor):
         h = self.encode(x)
         self.mark_activity(h)
-        
+
         # Top-K selection
         val, idx = torch.topk(h, k=self.k, dim=1)
         mask_topk = torch.zeros_like(h, dtype=torch.bool)
         mask_topk.scatter_(1, idx, True)
-        
+
         h_topk = torch.where(mask_topk, h, torch.zeros_like(h))
         x_hat = self.decode(h_topk)
-        
+
         return x_hat, h, h_topk
 
     def aux_reconstruct_error(self, e: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -93,25 +94,25 @@ class SAE(nn.Module):
             return torch.zeros_like(e), None
 
         k_aux = min(self.k * self.k_aux_factor, self.d_latent)
-        
+
         # Encode error
         h_e = self.encode(e)
-        
+
         # Select dead neurons
         h_dead = h_e[:, dead_idx]
-        
+
         # Top-K on dead neurons
         if h_dead.shape[1] > k_aux:
             _, local_topk = torch.topk(h_dead, k=k_aux, dim=1)
             mask_dead = torch.zeros_like(h_dead, dtype=torch.bool)
             mask_dead.scatter_(1, local_topk, True)
             h_dead = torch.where(mask_dead, h_dead, torch.zeros_like(h_dead))
-        
+
         # Partial reconstruction
         z = torch.zeros_like(h_e)
         z[:, dead_idx] = h_dead
-        e_hat = self.decoder(z) 
-        
+        e_hat = self.decoder(z)
+
         return e_hat, z
 
 # ==========================================
@@ -127,13 +128,13 @@ class LossOut:
 def sae_loss_func(model: SAE, x: torch.Tensor, alpha_aux: float) -> LossOut:
     x_hat, _, _ = model(x)
     diff = x - x_hat
-    
+
     # Reconstruction Loss (Normalized MSE)
     L_rec = (diff.pow(2).sum(dim=1) / x.shape[1]).mean()
-    
+
     # Auxiliary Loss
     e_hat, _ = model.aux_reconstruct_error(diff)
     L_aux = (diff - e_hat).pow(2).mean()
-    
+
     total = L_rec + alpha_aux * L_aux
     return LossOut(total, L_rec, L_aux)

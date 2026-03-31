@@ -1,31 +1,28 @@
 import threading
-from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
-from django.db.models import Q
-from django.contrib import messages
-from sae.models import SAERun
-from .models import SAEFeature, Interpretation
-from .forms import InterpretForm
-from .interpreter import run_interpretation_pipeline, interpret_single_feature 
-from .statistics import calculate_statistics_pipeline
-from .graph_builder import build_knowledge_graph
-from django.http import JsonResponse
-from .family_builder import build_feature_families
-from .models import FeatureFamily
-from embeddings.models import Document, Dataset
-from .interpreter import load_sae_model, zscore_transform
-import torch
-from .llm_utils import get_ollama_models, DEFAULT_SYSTEM_PROMPT
-from embeddings.embedders import get_embedder
 
-from django.shortcuts import render, get_object_or_404
-from django.db.models import Q
-from embeddings.models import Document, Dataset
-from sae.models import SAERun
-from .models import SAEFeature
-from .interpreter import load_sae_model, zscore_transform
-import torch
 import numpy as np
+import torch
+from django.contrib import messages
+from django.db.models import Q
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+
+from embeddings.embedders import get_embedder
+from embeddings.models import Dataset, Document
+from sae.models import SAERun
+
+from .family_builder import build_feature_families
+from .forms import InterpretForm
+from .interpreter import (
+    interpret_single_feature,
+    load_sae_model,
+    run_interpretation_pipeline,
+    zscore_transform,
+)
+from .llm_utils import DEFAULT_SYSTEM_PROMPT, get_ollama_models
+from .models import FeatureFamily, Interpretation, SAEFeature
+from .statistics import calculate_statistics_pipeline
 
 
 def index(request):
@@ -45,7 +42,7 @@ def start_interpretation(request):
             k_pos = form.cleaned_data['k_positive']
             k_neg = form.cleaned_data['k_negative']
             temp = form.cleaned_data['temperature']
-            
+
             t = threading.Thread(
                 target=run_interpretation_pipeline,
                 args=(run.id, n_feat, model_id, sys_prompt, k_pos, k_neg, temp),
@@ -53,23 +50,24 @@ def start_interpretation(request):
                 name='run_interpretation_pipeline'
             )
             t.start()
-            
+
             messages.success(request, f"Interpretation started for Run #{run.id} (Temp: {temp}). It runs in background.")
             return redirect('explorer:feature_list', run_id=run.id)
     else:
         last_run = SAERun.objects.filter(status='completed').order_by('-created_at').first()
         form = InterpretForm(initial={'run': last_run} if last_run else None)
-    
+
     return render(request, 'explorer/start_interpret.html', {'form': form})
 
 from django.core.paginator import Paginator
 
+
 def feature_list(request, run_id):
     run = get_object_or_404(SAERun, pk=run_id)
     query = request.GET.get('q', '')
-    
+
     features = run.features.all()
-    
+
     if query:
         # Phase 4: Try OpenSearch for feature search, fallback to SQLite
         os_feature_ids = None
@@ -91,14 +89,14 @@ def feature_list(request, run_id):
                 Q(description__icontains=query) |
                 Q(feature_index__icontains=query)
             )
-    
+
     features = features.order_by('-max_activation')
-    
+
     # Paginazione
     paginator = Paginator(features, 250)  # 50 features per pagina
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    
+
     return render(request, 'explorer/feature_list.html', {
         'run': run,
         'page_obj': page_obj,
@@ -107,18 +105,18 @@ def feature_list(request, run_id):
 def feature_detail(request, run_id, feature_index):
     ollama_models = get_ollama_models()
     run = get_object_or_404(SAERun, pk=run_id)
-    
+
     # Crea feature se non esiste
     feature, _ = SAEFeature.objects.get_or_create(
-        run=run, 
+        run=run,
         feature_index=feature_index,
         defaults={'label': f'Feature {feature_index}', 'description': 'Not interpreted yet.'}
     )
-    
+
     # Gestione Versioni
     version_id = request.GET.get('version')
     current_interp = getattr(feature, 'active_interpretation', None)
-    
+
     if version_id:
         try:
             current_interp = feature.interpretations.get(pk=version_id)
@@ -138,14 +136,14 @@ def feature_detail(request, run_id, feature_index):
 
     # --- FIX ETICHETTE: Sostituisco "Feature N" con la Label reale ---
     related_ids = set()
-    
+
     # Raccogli ID da correlazioni e co-occorrenze
     if feature.correlated_features:
         related_ids.update(c['index'] for c in feature.correlated_features)
-    
+
     if feature.co_occurring_features:
         related_ids.update(c['index'] for c in feature.co_occurring_features)
-    
+
     # Recupera le etichette dal DB
     known_labels = {}
     if related_ids:
@@ -170,7 +168,7 @@ def feature_detail(request, run_id, feature_index):
     all_features_stats = SAEFeature.objects.filter(run=run).values(
         'feature_index', 'mean_activation', 'variance_activation', 'label'
     )
-    
+
     scatter_data = []
     for f_stat in all_features_stats:
         # Includiamo solo se i dati esistono (potrebbero essere None se stats non calcolate)
@@ -187,7 +185,7 @@ def feature_detail(request, run_id, feature_index):
             'current_interp': current_interp,
             'history': history,
             'max_hist_count': max_hist_count,
-            
+
             # 2. Passali al context (Mancava anche questo!)
             'ollama_models': ollama_models,
             'ollama_status': 'online' if ollama_models else 'offline',
@@ -196,6 +194,7 @@ def feature_detail(request, run_id, feature_index):
         })
 
 from django.utils.safestring import mark_safe
+
 
 def reinterpret_feature(request, run_id, feature_index):
     feature = get_object_or_404(SAEFeature, run_id=run_id, feature_index=feature_index)
@@ -209,18 +208,18 @@ def reinterpret_feature(request, run_id, feature_index):
             k_neg = int(request.POST.get("k_negative", 5))
         except ValueError:
             temp = 0.2; k_pos = 5; k_neg = 5
-        
+
         # Run in background thread
         def run_interpretation_task():
             interpret_single_feature(feature.id, model_id, prompt, k_pos, k_neg, temp)
 
         t = threading.Thread(target=run_interpretation_task)
         t.start()
-        
+
         status_url = reverse('explorer:system_status')
         msg = mark_safe(f'Interpretation started in background. <a href="{status_url}" target="_blank" class="btn btn-sm btn-outline-light ms-2">Check Status</a>')
         messages.success(request, msg)
-            
+
     return redirect('explorer:feature_detail', run_id=run_id, feature_index=feature_index)
 
 
@@ -235,23 +234,23 @@ def calculate_stats(request, run_id):
     # Lancia il calcolo in background
     t = threading.Thread(target=calculate_statistics_pipeline, args=(run_id,), daemon=True, name='calculate_statistics_pipeline')
     t.start()
-    
+
     status_url = reverse('explorer:system_status')
     msg = mark_safe(f'Statistics calculation started in background. <a href="{status_url}" target="_blank" class="btn btn-sm btn-outline-light ms-2">Check Status</a>')
     messages.info(request, msg)
-    
+
     # LOGICA DI REDIRECT MIGLIORATA
     # Se la richiesta ha un 'next', usalo
     next_url = request.GET.get('next')
-    
+
     # Se no, prova a tornare alla pagina da cui sei venuto (Referer)
     if not next_url:
         next_url = request.META.get('HTTP_REFERER')
-        
+
     # Se ancora nulla, torna alla lista feature di default
     if not next_url:
         next_url = reverse('explorer:feature_list', args=[run_id])
-        
+
     return redirect(next_url)
 
 def build_families(request, run_id):
@@ -270,7 +269,7 @@ def family_list(request, run_id):
     query = request.GET.get('q')
     if query:
         families = families.filter(
-            Q(parent_feature__label__icontains=query) | 
+            Q(parent_feature__label__icontains=query) |
             Q(children_features__label__icontains=query)
         ).distinct()
 
@@ -281,16 +280,16 @@ def family_list(request, run_id):
             if child not in child_map:
                 child_map[child] = []
             child_map[child].append(fam)
-    
+
     inverted_families = []
     for child, fams in child_map.items():
         inverted_families.append({'child': child, 'families': fams})
-        
+
     # Sort by child feature index
     inverted_families.sort(key=lambda x: x['child'].feature_index)
 
     return render(request, 'explorer/family_list.html', {
-        'run': run, 
+        'run': run,
         'families': families,
         'inverted_families': inverted_families
     })
@@ -301,7 +300,7 @@ def document_analyzer(request):
     run_id = request.GET.get('run_id')
     doc_id = request.GET.get('doc_id')
     doc_query = request.GET.get('doc_q', '').strip()
-    
+
     context = {
         'datasets': Dataset.objects.all(),
         'selected_dataset': None,
@@ -312,7 +311,7 @@ def document_analyzer(request):
         'documents_list': [],
         'similar_docs': [],
         'embedding_norm': 0.0,
-        'ollama_models': available_models, 
+        'ollama_models': available_models,
         'ollama_status': 'online' if available_models else 'offline'
     }
 
@@ -326,7 +325,7 @@ def document_analyzer(request):
     if run_id and dataset_id:
         run = get_object_or_404(SAERun, pk=run_id)
         context['selected_run'] = run
-        
+
         # MOSTRA LISTA DOCUMENTI SOLO ORA (Se non c'è un doc specifico)
         if not doc_id:
             docs_qs = Document.objects.filter(dataset_id=dataset_id)
@@ -338,11 +337,11 @@ def document_analyzer(request):
     # 3. Analisi Documento (Solo se Dataset + Run + Doc sono presenti)
     if dataset_id and run_id and doc_id:
         doc = get_object_or_404(Document, pk=doc_id)
-        
+
         # Check coerenza
         if str(doc.dataset_id) == str(dataset_id):
             context['selected_doc'] = doc
-            
+
             # --- A. Embedding Info & Similarità ---
             # Get embedding: try OpenSearch first, then SQLite
             doc_embedding = None
@@ -420,32 +419,32 @@ def document_analyzer(request):
                 try:
                     device = "cpu"
                     model, mean, std = load_sae_model(run, device)
-                    
+
                     if model:
                         emb_tensor = torch.tensor([doc_embedding], dtype=torch.float32).to(device)
                         if mean is not None:
                             emb_tensor = zscore_transform(emb_tensor, mean, std)
-                        
+
                         with torch.no_grad():
                             acts = model.encode(emb_tensor)[0]
-                        
+
                         # Filtro attivazioni
                         non_zero = torch.nonzero(acts > 0.0001).flatten()
                         values = acts[non_zero].tolist()
                         indices = non_zero.tolist()
-                        
+
                         # Recupero info features
                         features_db = SAEFeature.objects.filter(
                             run=run, feature_index__in=indices
                         ).select_related('active_interpretation')
                         features_map = {f.feature_index: f for f in features_db}
-                        
+
                         analyzed_features = []
                         for idx, val in zip(indices, values):
                             feat_obj = features_map.get(idx)
                             label = f"Feature #{idx}"
                             desc = "" # Descrizione vuota di default per pulizia visiva
-                            
+
                             if feat_obj:
                                 if hasattr(feat_obj, 'active_interpretation') and feat_obj.active_interpretation:
                                     label = feat_obj.active_interpretation.label
@@ -461,11 +460,11 @@ def document_analyzer(request):
                                 'description': desc,
                                 'db_id': feat_obj.id if feat_obj else None
                             })
-                        
+
                         # Sort per attivazione
                         analyzed_features.sort(key=lambda x: x['activation'], reverse=True)
                         context['activations'] = analyzed_features
-                        
+
                 except Exception as e:
                     print(f"[SAE Error] {e}")
 
@@ -474,8 +473,11 @@ def document_analyzer(request):
 # --- SYSTEM STATUS & PROCESS MANAGEMENT ---
 import ctypes
 import time
+
 from django.conf import settings
+
 from .task_status import TASK_PROGRESS
+
 
 def system_status(request):
     return render(request, 'explorer/system_status.html', {
@@ -491,18 +493,18 @@ def get_logs(request):
     last_line = int(request.GET.get('last_line', 0))
     lines = []
     current_line_count = 0
-    
+
     if log_file.exists():
         with open(log_file, 'r') as f:
             all_lines = f.readlines()
             current_line_count = len(all_lines)
-            # If client is requesting from 0, give last 1000. 
+            # If client is requesting from 0, give last 1000.
             # If client has a specific index, give everything after that.
             if last_line == 0:
                 lines = all_lines[-1000:]
             elif last_line < current_line_count:
                 lines = all_lines[last_line:]
-    
+
     return JsonResponse({
         'lines': lines,
         'last_line': current_line_count
@@ -515,15 +517,15 @@ def get_threads(request):
         # Skip MainThread to avoid showing the server itself as a task
         if t.name == 'MainThread':
             continue
-            
+
         status = 'Running' if t.is_alive() else 'Stopped'
-        
+
         # Check for progress info
         progress_info = TASK_PROGRESS.get(t.ident, {})
         progress_pct = progress_info.get('progress', 0)
         progress_msg = progress_info.get('message', '')
         start_time = progress_info.get('start_time', None)
-        
+
         duration_str = '-'
         if start_time:
             duration = time.time() - start_time
@@ -542,24 +544,24 @@ def get_threads(request):
             'duration': duration_str,
             'start_time': start_time
         })
-    
+
     return JsonResponse({'threads': threads})
 
 def get_system_stats(request):
     """Returns system resource usage (CPU, RAM, GPU)."""
     import psutil
     import torch
-    
+
     # CPU & RAM
     cpu_percent = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory()
     ram_percent = ram.percent
     ram_used_gb = ram.used / (1024**3)
     ram_total_gb = ram.total / (1024**3)
-    
+
     # GPU
     gpu_stats = {'available': False, 'name': 'N/A', 'memory_used': 0, 'memory_total': 0, 'utilization': 0, 'temperature': 0}
-    
+
     if torch.cuda.is_available():
         gpu_stats['available'] = True
         try:
@@ -567,28 +569,28 @@ def get_system_stats(request):
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            
+
             name = pynvml.nvmlDeviceGetName(handle)
             if isinstance(name, bytes):
                 name = name.decode('utf-8')
-            
+
             gpu_stats['name'] = name
             gpu_stats['memory_used'] = info.used / (1024**3)
             gpu_stats['memory_total'] = info.total / (1024**3)
-            
+
             # Utilization & Temp
             try:
                 util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                 gpu_stats['utilization'] = util.gpu
-            except:
+            except Exception:
                 gpu_stats['utilization'] = 0
-                
+
             try:
                 temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
                 gpu_stats['temperature'] = temp
-            except:
+            except Exception:
                 gpu_stats['temperature'] = 0
-                
+
             pynvml.nvmlShutdown()
         except ImportError:
             # Fallback to torch if pynvml not installed
@@ -663,7 +665,7 @@ def get_services_status(request):
     opensearch_ok = False
     opensearch_info = {}
     try:
-        from search.client import is_available, get_client
+        from search.client import get_client, is_available
         opensearch_ok = is_available()
         if opensearch_ok:
             client = get_client()
@@ -733,36 +735,36 @@ def kill_thread(request, ident):
     """Attempts to kill a thread by raising an exception in it."""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
-        
+
     if not request.user.is_staff: # Basic protection
          return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
 
     target_tid = int(ident)
-    
+
     # Check if thread exists
     found = False
     for t in threading.enumerate():
         if t.ident == target_tid:
             found = True
             break
-    
+
     if not found:
         return JsonResponse({'success': False, 'error': 'Thread not found'})
 
     # Ctypes magic to raise exception in thread
     try:
         res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-            ctypes.c_long(target_tid), 
+            ctypes.c_long(target_tid),
             ctypes.py_object(SystemExit)
         )
         if res == 0:
             return JsonResponse({'success': False, 'error': 'Invalid thread ID'})
         elif res > 1:
-            # If it returns a number greater than 1, you're in trouble, 
+            # If it returns a number greater than 1, you're in trouble,
             # and you should call it again with exc=NULL to revert the effect
             ctypes.pythonapi.PyThreadState_SetAsyncExc(target_tid, 0)
             return JsonResponse({'success': False, 'error': 'Failed to kill thread (state rollback)'})
-            
+
         return JsonResponse({'success': True, 'message': f'Signal sent to thread {target_tid}'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
@@ -771,15 +773,17 @@ def stop_interpretation(request, run_id):
     """Signals the interpretation pipeline to stop gracefully."""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
-    
+
     from .interpreter import TASK_CONTROL
     TASK_CONTROL[run_id] = 'STOP'
-    
+
     return JsonResponse({'success': True, 'message': 'Pause signal sent. The process will stop after the current feature.'})
 
 import csv
 import os
-from django.http import HttpResponse, FileResponse
+
+from django.http import FileResponse, HttpResponse
+
 
 def export_feature_statistics(request, run_id):
     """
@@ -787,34 +791,34 @@ def export_feature_statistics(request, run_id):
     """
     run = get_object_or_404(SAERun, pk=run_id)
     features = run.features.all().order_by('feature_index')
-    
+
     response = HttpResponse(
         content_type='text/csv',
         headers={'Content-Disposition': f'attachment; filename="run_{run_id}_stats.csv"'},
     )
-    
+
     writer = csv.writer(response)
     # Header
     writer.writerow([
-        'Feature Index', 
-        'Label', 
-        'Description', 
-        'Density', 
-        'Max Activation', 
-        'Mean Activation', 
+        'Feature Index',
+        'Label',
+        'Description',
+        'Density',
+        'Max Activation',
+        'Mean Activation',
         'Variance Activation'
     ])
-    
+
     # Data
     for feature in features:
         # Use active interpretation label/desc if available, otherwise fallback
         label = feature.label
         description = feature.description
-        
+
         if hasattr(feature, 'active_interpretation') and feature.active_interpretation:
             label = feature.active_interpretation.label
             description = feature.active_interpretation.description
-            
+
         writer.writerow([
             feature.feature_index,
             label,
@@ -824,7 +828,7 @@ def export_feature_statistics(request, run_id):
             feature.mean_activation,
             feature.variance_activation
         ])
-        
+
     return response
 
 def download_db(request):
@@ -842,11 +846,11 @@ def download_sae_weights(request, run_id):
     Download the SAE weights (.pt) file for a specific run.
     """
     run = get_object_or_404(SAERun, pk=run_id)
-    
+
     if not run.weights_file:
         messages.error(request, "Weights file not found for this run.")
         return redirect('explorer:family_list', run_id=run_id)
-        
+
     try:
         return FileResponse(run.weights_file.open('rb'), as_attachment=True, filename=f"sae_weights_run_{run.id}.pt")
     except FileNotFoundError:
@@ -859,15 +863,16 @@ def export_document_activations(request, run_id):
     Yields CSV rows as a stream to avoid memory issues.
     """
     import json
+
     from django.http import StreamingHttpResponse
 
     run = get_object_or_404(SAERun, pk=run_id)
     dataset = run.dataset
-    
+
     # Define a generator for streaming
     def csv_generator():
         yield "doc_id,text_snippet,sparse_vector_json\n"
-        
+
         # Load Model once
         device = "cpu"
         model, mean, std = load_sae_model(run, device)
@@ -876,37 +881,37 @@ def export_document_activations(request, run_id):
             return
 
         documents = dataset.documents.filter(status='done').iterator(chunk_size=100)
-        
+
         for doc in documents:
             if not doc.embedding:
                 continue
-                
+
             try:
                 # Encode
                 emb_tensor = torch.tensor([doc.embedding], dtype=torch.float32)
                 if mean is not None:
                     emb_tensor = zscore_transform(emb_tensor, mean, std)
-                
+
                 with torch.no_grad():
                     acts = model.encode(emb_tensor)[0]
-                
+
                 # Get Sparse Vector (feature_index: value)
                 non_zero = torch.nonzero(acts > 0.0001).flatten()
                 values = acts[non_zero].tolist()
                 indices = non_zero.tolist()
-                
+
                 sparse_vector = {idx: round(val, 4) for idx, val in zip(indices, values)}
                 sparse_json = json.dumps(sparse_vector)
-                
+
                 # Clean text snippet (escape newlines/quotes for CSV)
                 truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
                 text_snippet = doc.text[:truncate_len].replace('"', '""').replace('\n', ' ')
-                
+
                 # Double quote escape for CSV format in f-string
                 escaped_json = sparse_json.replace('"', '""')
-                
+
                 yield f'{doc.external_id},"{text_snippet}","{escaped_json}"\n'
-                
+
             except Exception as e:
                 print(f"Error exporting doc {doc.id}: {e}")
                 continue
@@ -920,7 +925,7 @@ def export_document_activations(request, run_id):
 
 def inference_view(request):
     runs = SAERun.objects.filter(status='completed').order_by('-created_at')
-    
+
     context = {
         'runs': runs,
         'selected_run': None,
@@ -932,55 +937,55 @@ def inference_view(request):
     if request.method == 'POST':
         run_id = request.POST.get('run_id')
         text = request.POST.get('text', '').strip()
-        
+
         if run_id and text:
             run = get_object_or_404(SAERun, pk=run_id)
             context['selected_run'] = run
             context['input_text'] = text
-            
+
             try:
                 # 1. Generate Embedding
                 model_name = run.dataset.model_name
                 embedder_cls = get_embedder(model_name)
                 # embed_texts returns a list of lists
                 embeddings = embedder_cls.embed_texts([text])
-                
+
                 if embeddings and len(embeddings) > 0 and len(embeddings[0]) > 0:
                     embedding = embeddings[0]
                     emb_tensor = torch.tensor([embedding], dtype=torch.float32)
                     context['embedding_norm'] = float(torch.norm(emb_tensor))
-                    
+
                     # 2. Load SAE & Inference
                     device = "cpu" # Force CPU for inference view to be safe/simple
                     model, mean, std = load_sae_model(run, device)
-                    
+
                     if model:
                         if mean is not None:
                             emb_tensor = zscore_transform(emb_tensor, mean, std)
-                        
+
                         with torch.no_grad():
                             acts = model.encode(emb_tensor)[0]
-                        
+
                         # 3. Filter & Format Results
                         # Filter > 0.0001 to remove noise
                         non_zero = torch.nonzero(acts > 0.0001).flatten()
                         values = acts[non_zero].tolist()
                         indices = non_zero.tolist()
-                        
+
                         # Get Feature Details from DB
                         features_db = SAEFeature.objects.filter(
                             run=run, feature_index__in=indices
                         ).select_related('active_interpretation')
                         features_map = {f.feature_index: f for f in features_db}
-                        
+
                         analyzed_features = []
                         max_val = max(values) if values else 1.0
-                        
+
                         for idx, val in zip(indices, values):
                             feat_obj = features_map.get(idx)
                             label = ""
                             desc = ""
-                            
+
                             if feat_obj:
                                 if hasattr(feat_obj, 'active_interpretation') and feat_obj.active_interpretation:
                                     label = feat_obj.active_interpretation.label
@@ -988,7 +993,7 @@ def inference_view(request):
                                 elif feat_obj.label:
                                     label = feat_obj.label
                                     desc = feat_obj.description
-                            
+
                             analyzed_features.append({
                                 'index': idx,
                                 'activation': val,
@@ -996,7 +1001,7 @@ def inference_view(request):
                                 'label': label,
                                 'description': desc
                             })
-                        
+
                         # Histogram Data
                         if values:
                             counts, bin_edges = np.histogram(values, bins=20)
@@ -1008,7 +1013,7 @@ def inference_view(request):
                         # Sort by activation desc
                         analyzed_features.sort(key=lambda x: x['activation'], reverse=True)
                         context['analyzed_features'] = analyzed_features
-                        
+
             except Exception as e:
                 messages.error(request, f"Inference Error: {str(e)}")
                 print(f"[Inference Error] {e}")

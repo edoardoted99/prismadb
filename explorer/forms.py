@@ -1,7 +1,10 @@
 # explorer/forms.py
 from django import forms
+
 from sae.models import SAERun
+
 from .llm_utils import DEFAULT_SYSTEM_PROMPT
+
 
 class InterpretForm(forms.Form):
     run = forms.ModelChoiceField(
@@ -9,10 +12,10 @@ class InterpretForm(forms.Form):
         label="Select Training Run",
         widget=forms.Select(attrs={'class': 'form-select'})
     )
-    
+
     n_features = forms.IntegerField(
-        min_value=1, initial=20, #max_value=1000 
-        label="Features to Interpret", 
+        min_value=1, initial=20, #max_value=1000
+        label="Features to Interpret",
         widget=forms.NumberInput(attrs={'class': 'form-control'})
     )
 
@@ -27,7 +30,7 @@ class InterpretForm(forms.Form):
         label="Negative Examples (Random)",
         widget=forms.NumberInput(attrs={'class': 'form-control'})
     )
-    
+
     ollama_model = forms.ChoiceField(
         label="Ollama Model ID",
         widget=forms.Select(attrs={'class': 'form-select'})
