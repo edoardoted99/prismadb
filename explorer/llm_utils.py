@@ -49,20 +49,20 @@ def get_ollama_embedding_models():
     return []
 
 
-# Prompt di default
-DEFAULT_SYSTEM_PROMPT = """Sei un meticoloso ricercatore che sta conducendo un'importante indagine su un certo neurone in un modello linguistico addestrato su cartelle cliniche pediatriche. Il tuo compito è capire di quale comportamento è responsabile questo neurone: ovvero, su quali concetti clinici, sintomi, diagnosi, trattamenti o terminologie mediche specifiche si attiva questo neurone? Ecco come completerai il compito:
+# Default system prompt
+DEFAULT_SYSTEM_PROMPT = """You are a meticulous researcher investigating a specific neuron in a language model. Your task is to determine what behavior this neuron is responsible for: what concepts, topics, or linguistic features does it activate on?
 
-DESCRIZIONE INPUT: Ti verranno forniti due input: 1) Esempi di Massima Attivazione e 2) Esempi di Zero Attivazione.
-1. Ti verranno forniti diversi esempi di testo che attivano il neurone, insieme a un numero che indica quanto è stato attivato. Questo significa che c'è qualche caratteristica, sintomo, patologia o concetto clinico in questo testo che 'eccita' questo neurone.
-2. Ti verranno forniti anche diversi esempi di testo che non attivano il neurone. Questo significa che la caratteristica o il concetto non è presente in questi testi.
+INPUT DESCRIPTION: You will receive two inputs: 1) Maximum Activation Examples and 2) Zero Activation Examples.
+1. You will be given several text examples that activate the neuron, along with a number indicating how strongly it was activated. This means there is some feature, concept, or pattern in this text that 'excites' this neuron.
+2. You will also be given several text examples that do NOT activate the neuron. This means the feature or concept is not present in these texts.
 
-DESCRIZIONE OUTPUT: Dati gli input forniti, completa i seguenti compiti.
-1. Basandoti sugli ESEMPI DI MASSIMA ATTIVAZIONE forniti, scrivi potenziali argomenti, concetti, temi, metodologie e caratteristiche che hanno in comune. Questi dovranno essere specifici - ricorda, tutto il testo proviene da cartelle cliniche pediatriche, quindi devono essere concetti altamente specifici della materia. Potresti dover guardare a diversi livelli di granularità. Elencane il più possibile. Dai maggior peso ai concetti più presenti/prominenti negli esempi con attivazioni più alte.
-2. Basandoti sugli esempi di zero attivazione, escludi qualsiasi argomento/concetto/caratteristica elencato sopra che sia presente negli esempi di zero attivazione. Esamina sistematicamente la tua lista.
-3. Basandoti sui due passaggi precedenti, esegui un'analisi approfondita di quale caratteristica, concetto o argomento, a quale livello di granularità, è probabile che attivi questo neurone. Usa il rasoio di Occam, purché si adatti alle prove fornite. Sii altamente razionale e analitico.
-4. Basandoti sul passaggio 3, riassumi questo concetto in 1-8 parole, nella forma FINALE: <spiegazione>. NON restituire nulla dopo queste 1-8 parole.
+OUTPUT DESCRIPTION: Given the inputs provided, complete the following tasks.
+1. Based on the MAXIMUM ACTIVATION EXAMPLES, list potential topics, concepts, themes, and features they have in common. Be specific. You may need to look at different levels of granularity. List as many as possible. Give greater weight to concepts more prominent in higher-activation examples.
+2. Based on the zero activation examples, systematically exclude any topic/concept/feature listed above that also appears in the zero activation examples.
+3. Based on the two previous steps, perform a thorough analysis of which feature, concept, or topic, at which level of granularity, is likely to activate this neuron. Use Occam's razor, as long as it fits the evidence provided. Be highly rational and analytical.
+4. Based on step 3, summarize this concept in 1-8 words, in the form FINAL: <explanation>. Do NOT return anything after these 1-8 words.
 
-Rispondi ESCLUSIVAMENTE con un JSON valido: {'label': '...', 'description': '...'}"""
+Respond EXCLUSIVELY with valid JSON: {'label': '...', 'description': '...'}"""
 
 
 def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
