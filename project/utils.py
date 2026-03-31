@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 import torch
 
@@ -32,15 +32,8 @@ def get_device() -> str:
 
 
 def get_setting(key: str) -> str:
-    """Load a setting: env var > DB > default."""
-    # 1. Environment variable (highest priority)
-    env_var = SETTING_ENV_VARS.get(key)
-    if env_var:
-        env_val = os.environ.get(env_var)
-        if env_val:
-            return env_val
-
-    # 2. Database
+    """Load a setting: DB > env var > default."""
+    # 1. Database (highest priority — user explicitly saved via UI)
     try:
         from explorer.models import AppSetting
         obj = AppSetting.objects.filter(key=key).first()
@@ -48,6 +41,13 @@ def get_setting(key: str) -> str:
             return obj.value
     except Exception:
         pass  # DB not ready (e.g. during migrations)
+
+    # 2. Environment variable (initial/default override)
+    env_var = SETTING_ENV_VARS.get(key)
+    if env_var:
+        env_val = os.environ.get(env_var)
+        if env_val:
+            return env_val
 
     # 3. Default
     return SETTING_DEFAULTS.get(key, '')

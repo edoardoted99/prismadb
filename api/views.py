@@ -380,6 +380,7 @@ def system_status(request):
     ollama_ok = False
     try:
         import requests as req
+
         from project.utils import get_setting
         resp = req.get(f"{get_setting('ollama_base_url')}/api/tags", timeout=5)
         ollama_ok = resp.status_code == 200

@@ -6,6 +6,7 @@ import time
 import requests
 from django.conf import settings
 
+
 def _ollama_base():
     return getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
 
