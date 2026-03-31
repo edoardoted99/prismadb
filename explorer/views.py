@@ -709,6 +709,10 @@ def update_ollama_url(request):
     # Update Django settings at runtime
     settings.OLLAMA_BASE_URL = new_url
 
+    # Persist to runtime config so it survives restarts
+    from project.utils import save_runtime_config
+    save_runtime_config({'ollama_base_url': new_url})
+
     # Test connection
     import requests as req
     connected = False
