@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 
 from embeddings.embedders import get_embedder
 from embeddings.models import Dataset, Document
@@ -648,6 +649,7 @@ def get_system_stats(request):
 def get_services_status(request):
     """Check connectivity to Ollama and OpenSearch."""
     import requests as req
+
     from project.utils import get_setting
 
     # Ollama
@@ -697,6 +699,7 @@ def get_services_status(request):
     })
 
 
+@csrf_exempt
 def update_ollama_url(request):
     """Update the Ollama base URL at runtime."""
     if request.method != 'POST':
@@ -731,6 +734,7 @@ def update_ollama_url(request):
     })
 
 
+@csrf_exempt
 def update_opensearch(request):
     """Update OpenSearch host and port at runtime."""
     if request.method != 'POST':
@@ -770,6 +774,7 @@ def update_opensearch(request):
     })
 
 
+@csrf_exempt
 def kill_thread(request, ident):
     """Attempts to kill a thread by raising an exception in it."""
     if request.method != 'POST':
@@ -808,6 +813,7 @@ def kill_thread(request, ident):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
+@csrf_exempt
 def stop_interpretation(request, run_id):
     """Signals the interpretation pipeline to stop gracefully."""
     if request.method != 'POST':
