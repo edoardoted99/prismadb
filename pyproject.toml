@@ -28,6 +28,8 @@ dependencies = [
     "requests>=2.28",
     "gunicorn>=21.2",
     "psutil>=5.9",
+    "click>=8.0",
+    "tqdm>=4.60",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +39,7 @@ dev = ["ruff", "pytest", "pytest-django"]
 all = ["prismadb[search,api]"]
 
 [project.scripts]
-prismadb = "project.cli:main"
+prismadb = "project.cli:cli"
 
 [tool.setuptools.dynamic]
 version = {attr = "project.__version__.__version__"}

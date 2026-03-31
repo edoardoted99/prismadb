@@ -77,13 +77,14 @@ from explorer.task_status import TASK_PROGRESS
 
 logger = logging.getLogger(__name__)
 
-def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32):
+def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32, progress_callback=None):
     """
     Versione thread-safe e corretta del generatore.
+    progress_callback: optional callable(processed, total) for CLI progress bars.
     """
     # Chiudiamo vecchie connessioni per sicurezza nel thread
     close_old_connections()
-    
+
     tid = threading.get_ident()
     TASK_PROGRESS[tid] = {'progress': 0, 'message': 'Starting...', 'start_time': time.time()}
     
@@ -176,12 +177,15 @@ def generate_embeddings_for_dataset(dataset_id: int, batch_size: int = 32):
                 
                 processed_count = i + len(docs)
                 progress_pct = int((processed_count / total) * 100)
-                
+
                 logger.info(f"[Embeddings] Processed {processed_count}/{total}")
-                
+
                 # Update Task Progress
                 TASK_PROGRESS[tid]['progress'] = progress_pct
                 TASK_PROGRESS[tid]['message'] = f"Embedding {processed_count}/{total}"
+
+                if progress_callback:
+                    progress_callback(processed_count, total)
                 
             except Exception as e:
                 logger.error(f"[Embeddings] Batch Error: {e}")

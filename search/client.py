@@ -1,5 +1,10 @@
 import logging
-from opensearchpy import OpenSearch
+
+try:
+    from opensearchpy import OpenSearch
+except ImportError:
+    OpenSearch = None
+
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -10,6 +15,8 @@ _client = None
 def get_client():
     """Singleton OpenSearch client, configured from Django settings."""
     global _client
+    if OpenSearch is None:
+        return None
     if _client is None:
         _client = OpenSearch(
             hosts=[{
@@ -27,6 +34,9 @@ def get_client():
 def is_available():
     """Check if OpenSearch is reachable."""
     try:
-        return get_client().ping()
+        client = get_client()
+        if client is None:
+            return False
+        return client.ping()
     except Exception:
         return False
