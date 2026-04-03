@@ -23,9 +23,9 @@ class SAERun(models.Model):
 
 
     # Loss & Training Params
-    alpha_aux = models.FloatField(default=0.03, help_text="Auxiliary Loss Coefficient")
+    alpha_aux = models.FloatField(default=1/32, help_text="Auxiliary Loss Coefficient (paper: 1/32)")
     learning_rate = models.FloatField(default=1e-4)
-    batch_size = models.IntegerField(default=512)
+    batch_size = models.IntegerField(default=1024, help_text="Paper: 1024")
     epochs = models.IntegerField(default=20)
 
     # --- Status & Results ---

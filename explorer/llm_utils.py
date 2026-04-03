@@ -16,7 +16,7 @@ def _ollama_base():
 def get_ollama_models():
     """Returns all Ollama model names (for LLM chat/interpretation)."""
     try:
-        response = requests.get(f"{_ollama_base()}/api/tags", timeout=0.5)
+        response = requests.get(f"{_ollama_base()}/api/tags", timeout=10)
         if response.status_code == 200:
             data = response.json()
             return [m['name'] for m in data.get('models', [])]
@@ -28,10 +28,11 @@ def get_ollama_models():
 def get_ollama_embedding_models():
     """
     Returns only Ollama models that support /api/embed.
-    Filters by name containing 'embed' or family containing 'bert'.
+    Checks name and family/families for embedding-related keywords.
     """
+    EMBEDDING_KEYWORDS = {'embed', 'bert', 'bge', 'e5', 'gte'}
     try:
-        response = requests.get(f"{_ollama_base()}/api/tags", timeout=0.5)
+        response = requests.get(f"{_ollama_base()}/api/tags", timeout=10)
         if response.status_code == 200:
             data = response.json()
             embedding_models = []
@@ -39,8 +40,10 @@ def get_ollama_embedding_models():
                 name = m.get('name', '').lower()
                 details = m.get('details', {})
                 family = details.get('family', '').lower()
+                families = [f.lower() for f in details.get('families', []) or []]
 
-                if 'embed' in name or 'bert' in family:
+                searchable = name + ' ' + family + ' ' + ' '.join(families)
+                if any(kw in searchable for kw in EMBEDDING_KEYWORDS):
                     embedding_models.append(m['name'])
 
             return embedding_models

@@ -107,8 +107,8 @@ def ingest(file, model, name, description, embed, batch_size):
 @click.option("--top-k", default=32, help="Top-K sparsity.")
 @click.option("--epochs", default=20, help="Training epochs.")
 @click.option("--lr", default=1e-4, type=float, help="Learning rate.")
-@click.option("--batch-size", default=512, help="Training batch size.")
-@click.option("--alpha-aux", default=0.03, type=float, help="Auxiliary loss coefficient.")
+@click.option("--batch-size", default=1024, help="Training batch size.")
+@click.option("--alpha-aux", default=1/32, type=float, help="Auxiliary loss coefficient (paper: 1/32).")
 def train(dataset, expansion, top_k, epochs, lr, batch_size, alpha_aux):
     """Train a Sparse Autoencoder on a dataset's embeddings."""
     _setup_django()

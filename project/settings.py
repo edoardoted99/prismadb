@@ -13,10 +13,15 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from project.__version__ import __version__ as PRISMADB_VERSION
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env file from project root
+load_dotenv(BASE_DIR / '.env')
 
 # Configurable data directory (for CLI usage outside the source tree)
 PRISMADB_HOME = Path(os.environ.get('PRISMADB_HOME', str(BASE_DIR))).expanduser()

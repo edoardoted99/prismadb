@@ -12,7 +12,7 @@ SETTING_DEFAULTS = {
 
 # Map setting keys to environment variable names
 SETTING_ENV_VARS = {
-    'ollama_base_url': 'OLLAMA_BASE_URL',
+    'ollama_base_url': 'OLLAMA_HOST',
 }
 
 

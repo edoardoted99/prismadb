@@ -161,7 +161,17 @@ def train_sae_run(run_id: int):
         )
 
         model = SAE(cfg).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
+
+        # Paper-aligned initialization from data (Appendix A.1)
+        print(f"[Run #{run.id}] Initializing model from data...")
+        model.initialize_from_data(X_std.to(device))
+
+        # Paper: Adam with β=(0.9, 0.999), NO weight decay
+        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr,
+                                     betas=(0.9, 0.999))
+
+        # Global normalization factor for primary MSE loss (computed once at training start)
+        global_norm_factor = 1.0 / cfg.d_in
 
         dataset = TensorDataset(X_std)
         loader = DataLoader(dataset, batch_size=run.batch_size, shuffle=True)
@@ -179,11 +189,22 @@ def train_sae_run(run_id: int):
             for (xb,) in loader:
                 xb = xb.to(device)
 
-                out = sae_loss_func(model, xb, alpha_aux=cfg.alpha_aux)
+                out = sae_loss_func(model, xb, alpha_aux=cfg.alpha_aux,
+                                    global_norm_factor=global_norm_factor)
 
                 optimizer.zero_grad()
                 out.total.backward()
+
+                # Gradient clipping (Paper Appendix A.1)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+                # Gradient projection: decouple Adam from decoder normalization
+                model.gradient_projection()
+
                 optimizer.step()
+
+                # Normalize decoder weights after each step (Paper Appendix A.1)
+                model.normalize_decoder()
 
                 epoch_loss += out.total.item()
                 steps += 1
