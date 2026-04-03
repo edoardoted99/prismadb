@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-search = ["opensearch-py>=2.4"]
+search = ["chromadb>=0.5", "rank-bm25>=0.2.2"]
 api = ["djangorestframework>=3.15", "drf-spectacular>=0.27"]
 dev = ["ruff", "pytest", "pytest-django"]
 all = ["prismadb[search,api]"]

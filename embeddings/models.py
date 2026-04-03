@@ -43,7 +43,6 @@ class Document(models.Model):
     external_id = models.CharField(max_length=255)
     text = models.TextField()
     embedding = models.JSONField(null=True, blank=True)
-    opensearch_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DOC_PENDING)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

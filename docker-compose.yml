@@ -1,25 +1,7 @@
-# Default: solo OpenSearch. Django gira nativo (con MPS/GPU).
-# Per lo stack completo (senza GPU): docker compose --profile full up
+# ChromaDB runs embedded inside the app (no separate service needed).
+# For the full stack in a container: docker compose --profile full up
 
 services:
-  opensearch:
-    image: opensearchproject/opensearch:2.11.1
-    environment:
-      - discovery.type=single-node
-      - DISABLE_SECURITY_PLUGIN=true
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  # Profilo "full": app Django in container (CPU only, no MPS)
   app:
     profiles: ["full"]
     build:
@@ -35,18 +17,12 @@ services:
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-change-me-in-production}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
-      - DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS:-https://prismadb.com,http://prismadb.com}
+      - DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       - PRISMADB_HOME=/app/data
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - OPENSEARCH_HOST=opensearch
-      - OPENSEARCH_PORT=9200
-    depends_on:
-      opensearch:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:
-  opensearch_data:
   app_data:

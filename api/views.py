@@ -387,11 +387,11 @@ def system_status(request):
     except Exception:
         pass
 
-    # Check OpenSearch
-    opensearch_ok = False
+    # Check ChromaDB
+    chromadb_ok = False
     try:
         from search.client import is_available
-        opensearch_ok = is_available()
+        chromadb_ok = is_available()
     except Exception:
         pass
 
@@ -400,7 +400,7 @@ def system_status(request):
         "status": "ok",
         "services": {
             "ollama": ollama_ok,
-            "opensearch": opensearch_ok,
+            "chromadb": chromadb_ok,
         },
     })
 

@@ -8,17 +8,11 @@ logger = logging.getLogger(__name__)
 # Default values for all app settings
 SETTING_DEFAULTS = {
     'ollama_base_url': 'http://localhost:11434',
-    'opensearch_host': 'localhost',
-    'opensearch_port': '9200',
-    'opensearch_use_ssl': 'false',
 }
 
 # Map setting keys to environment variable names
 SETTING_ENV_VARS = {
     'ollama_base_url': 'OLLAMA_BASE_URL',
-    'opensearch_host': 'OPENSEARCH_HOST',
-    'opensearch_port': 'OPENSEARCH_PORT',
-    'opensearch_use_ssl': 'OPENSEARCH_USE_SSL',
 }
 
 

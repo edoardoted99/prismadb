@@ -105,26 +105,26 @@ def calculate_statistics_pipeline(run_id):
         target_set = set(existing_features)
         processed = 0
 
-        # Try OpenSearch scroll first, fallback to SQLite
-        use_opensearch = False
+        # Try ChromaDB scroll first, fallback to SQLite
+        use_chromadb = False
         try:
             from search.client import is_available
             if is_available():
                 from search.bulk_ops import count_documents, scroll_documents_in_batches
                 total_docs = count_documents(run.dataset_id)
-                use_opensearch = True
-                logger.info("[Stats] Using OpenSearch for dataset scan.")
+                use_chromadb = True
+                logger.info("[Stats] Using ChromaDB for dataset scan.")
         except Exception:
-            use_opensearch = False
+            use_chromadb = False
 
-        if not use_opensearch:
+        if not use_chromadb:
             doc_qs = run.dataset.documents.filter(status='done').order_by('id')
             total_docs = doc_qs.count()
             logger.info("[Stats] Using SQLite for dataset scan.")
 
         def _get_batch_iterator():
             """Yields lists of embeddings per batch."""
-            if use_opensearch:
+            if use_chromadb:
                 for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
                                                                fields=['embedding']):
                     emb_list = [d['embedding'] for d in batch_data if d.get('embedding')]
@@ -242,35 +242,6 @@ def calculate_statistics_pipeline(run_id):
             features_to_update,
             ['correlated_features', 'co_occurring_features', 'activation_histogram', 'density', 'max_activation', 'mean_activation', 'variance_activation']
         )
-
-        # Phase 4: Bulk update features in OpenSearch
-        try:
-            from search.client import is_available
-            if is_available():
-                from search.bulk_ops import bulk_update_features
-                from search.indices import create_feature_index
-                create_feature_index(run.id)
-
-                os_updates = []
-                for feat in features_to_update:
-                    os_updates.append((feat.id, {
-                        'django_id': feat.id,
-                        'feature_index': feat.feature_index,
-                        'label': feat.label or '',
-                        'description': feat.description or '',
-                        'density': feat.density,
-                        'max_activation': feat.max_activation,
-                        'mean_activation': feat.mean_activation,
-                        'variance_activation': feat.variance_activation,
-                        'correlated_features': feat.correlated_features,
-                        'co_occurring_features': feat.co_occurring_features,
-                        'activation_histogram': feat.activation_histogram,
-                    }))
-                if os_updates:
-                    bulk_update_features(run.id, os_updates)
-                logger.info("[Stats] OpenSearch features updated.")
-        except Exception as os_err:
-            logger.warning(f"[OpenSearch] Failed to update features: {os_err}")
 
         logger.info("[Stats] Statistics calculation completed successfully.")
         TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Done.'})

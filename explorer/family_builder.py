@@ -160,7 +160,7 @@ def build_feature_families(run_id, threshold=0.1, n_iterations=3):
             C = torch.zeros((n_feats, n_feats))
             D = torch.zeros((n_feats, n_feats))
 
-            # Try OpenSearch for embeddings, fallback to SQLite
+            # Try ChromaDB for embeddings, fallback to SQLite
             embs = None
             try:
                 from search.client import is_available

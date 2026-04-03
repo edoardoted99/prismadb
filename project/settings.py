@@ -164,7 +164,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 EXPLORER_DOC_TRUNCATION_LIMIT = 1000
 EXPLORER_OLLAMA_TIMEOUT = 1200 # 20 minuti
 
-# Service settings (Ollama, OpenSearch) are stored in the DB via
+# Service settings (Ollama) are stored in the DB via
 # explorer.models.AppSetting and accessed through project.utils.get_setting().
 
 # --- REST API (optional, requires djangorestframework) ---

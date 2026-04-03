@@ -1,52 +1,32 @@
 import logging
 
-from .client import get_client
-from .indices import get_document_index_name, get_feature_index_name
+from .collections import get_or_create_document_collection
 
 logger = logging.getLogger(__name__)
 
 
 def search_similar_documents(dataset_id, embedding, k=5, exclude_id=None):
     """kNN search for similar documents by embedding vector."""
-    client = get_client()
-    index_name = get_document_index_name(dataset_id)
-
-    knn_clause = {
-        "knn": {
-            "embedding": {
-                "vector": embedding,
-                "k": k + (1 if exclude_id else 0),
-            }
-        }
-    }
-
-    if exclude_id:
-        query = {
-            "size": k + 1,
-            "query": {
-                "bool": {
-                    "must": [knn_clause],
-                    "must_not": [{"term": {"django_id": exclude_id}}],
-                }
-            },
-            "_source": ["django_id", "external_id", "text"],
-        }
-    else:
-        query = {
-            "size": k,
-            "query": knn_clause,
-            "_source": ["django_id", "external_id", "text"],
-        }
+    collection = get_or_create_document_collection(dataset_id)
+    n_results = k + (1 if exclude_id else 0)
 
     try:
-        result = client.search(index=index_name, body=query)
+        results = collection.query(
+            query_embeddings=[embedding],
+            n_results=min(n_results, collection.count()),
+            include=["documents", "metadatas", "distances"],
+        )
+
         hits = []
-        for hit in result["hits"]["hits"]:
+        for i in range(len(results["ids"][0])):
+            meta = results["metadatas"][0][i]
+            if exclude_id and meta["django_id"] == exclude_id:
+                continue
             hits.append({
-                "django_id": hit["_source"]["django_id"],
-                "external_id": hit["_source"].get("external_id"),
-                "text": hit["_source"].get("text", ""),
-                "score": hit["_score"],
+                "django_id": meta["django_id"],
+                "external_id": meta.get("external_id", ""),
+                "text": results["documents"][0][i] if results.get("documents") else "",
+                "score": 1.0 - results["distances"][0][i],  # cosine distance -> similarity
             })
         return hits[:k]
     except Exception as e:
@@ -56,30 +36,39 @@ def search_similar_documents(dataset_id, embedding, k=5, exclude_id=None):
 
 def search_documents_bm25(dataset_id, query_text, size=10):
     """Full-text BM25 search on document text."""
-    client = get_client()
-    index_name = get_document_index_name(dataset_id)
+    try:
+        from rank_bm25 import BM25Okapi
+    except ImportError:
+        logger.error("rank_bm25 not installed. Install with: pip install rank-bm25")
+        return []
 
-    query = {
-        "size": size,
-        "query": {
-            "match": {
-                "text": query_text
-            }
-        },
-        "_source": ["django_id", "external_id", "text"],
-    }
+    collection = get_or_create_document_collection(dataset_id)
 
     try:
-        result = client.search(index=index_name, body=query)
-        return [
-            {
-                "django_id": hit["_source"]["django_id"],
-                "external_id": hit["_source"].get("external_id"),
-                "text": hit["_source"].get("text", ""),
-                "score": hit["_score"],
-            }
-            for hit in result["hits"]["hits"]
-        ]
+        all_docs = collection.get(include=["documents", "metadatas"])
+        if not all_docs["documents"]:
+            return []
+
+        # Tokenize and score
+        corpus = [doc.lower().split() for doc in all_docs["documents"]]
+        bm25 = BM25Okapi(corpus)
+
+        tokenized_query = query_text.lower().split()
+        scores = bm25.get_scores(tokenized_query)
+
+        # Get top-k by score
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:size]
+
+        results = []
+        for idx in top_indices:
+            if scores[idx] > 0:
+                results.append({
+                    "django_id": all_docs["metadatas"][idx]["django_id"],
+                    "external_id": all_docs["metadatas"][idx].get("external_id", ""),
+                    "text": all_docs["documents"][idx],
+                    "score": float(scores[idx]),
+                })
+        return results
     except Exception as e:
         logger.error(f"BM25 search error: {e}")
         return []
@@ -88,107 +77,31 @@ def search_documents_bm25(dataset_id, query_text, size=10):
 def search_documents_hybrid(dataset_id, query_text, embedding, size=10,
                             bm25_weight=0.3, knn_weight=0.7):
     """Hybrid search combining BM25 full-text and kNN semantic similarity."""
-    client = get_client()
-    index_name = get_document_index_name(dataset_id)
+    bm25_results = search_documents_bm25(dataset_id, query_text, size=size * 2)
+    knn_results = search_similar_documents(dataset_id, embedding, k=size * 2)
 
-    query = {
-        "size": size,
-        "query": {
-            "bool": {
-                "should": [
-                    {
-                        "match": {
-                            "text": {
-                                "query": query_text,
-                                "boost": bm25_weight,
-                            }
-                        }
-                    },
-                    {
-                        "knn": {
-                            "embedding": {
-                                "vector": embedding,
-                                "k": size,
-                                "boost": knn_weight,
-                            }
-                        }
-                    }
-                ]
-            }
-        },
-        "_source": ["django_id", "external_id", "text"],
-    }
+    def _normalize(results):
+        if not results:
+            return results
+        max_score = max(r["score"] for r in results) or 1.0
+        for r in results:
+            r["norm_score"] = r["score"] / max_score
+        return results
 
-    try:
-        result = client.search(index=index_name, body=query)
-        return [
-            {
-                "django_id": hit["_source"]["django_id"],
-                "external_id": hit["_source"].get("external_id"),
-                "text": hit["_source"].get("text", ""),
-                "score": hit["_score"],
-            }
-            for hit in result["hits"]["hits"]
-        ]
-    except Exception as e:
-        logger.error(f"Hybrid search error: {e}")
-        return []
+    bm25_results = _normalize(bm25_results)
+    knn_results = _normalize(knn_results)
 
+    bm25_map = {r["django_id"]: r for r in bm25_results}
+    knn_map = {r["django_id"]: r for r in knn_results}
 
-def get_random_documents(dataset_id, k=10, must_have_embedding=True):
-    """Get random documents using function_score + random_score."""
-    client = get_client()
-    index_name = get_document_index_name(dataset_id)
+    all_ids = set(bm25_map.keys()) | set(knn_map.keys())
+    combined = []
+    for did in all_ids:
+        bm25_score = bm25_map[did]["norm_score"] if did in bm25_map else 0.0
+        knn_score = knn_map[did]["norm_score"] if did in knn_map else 0.0
+        entry = bm25_map.get(did) or knn_map.get(did)
+        entry["score"] = bm25_weight * bm25_score + knn_weight * knn_score
+        combined.append(entry)
 
-    query_body = {"match_all": {}}
-    if must_have_embedding:
-        query_body = {"exists": {"field": "embedding"}}
-
-    query = {
-        "size": k,
-        "query": {
-            "function_score": {
-                "query": query_body,
-                "random_score": {},
-            }
-        },
-        "_source": ["django_id", "external_id", "text", "embedding"],
-    }
-
-    try:
-        result = client.search(index=index_name, body=query)
-        return [hit["_source"] for hit in result["hits"]["hits"]]
-    except Exception as e:
-        logger.error(f"Random docs error: {e}")
-        return []
-
-
-def search_features(run_id, query_text, size=50):
-    """Search features by label or description text."""
-    client = get_client()
-    index_name = get_feature_index_name(run_id)
-
-    query = {
-        "size": size,
-        "query": {
-            "multi_match": {
-                "query": query_text,
-                "fields": ["label^3", "description"],
-                "type": "best_fields",
-            }
-        },
-        "_source": [
-            "django_id", "feature_index", "label", "description",
-            "density", "max_activation", "mean_activation", "variance_activation",
-        ],
-    }
-
-    try:
-        result = client.search(index=index_name, body=query)
-        return [
-            {**hit["_source"], "score": hit["_score"]}
-            for hit in result["hits"]["hits"]
-        ]
-    except Exception as e:
-        logger.error(f"Feature search error: {e}")
-        return []
+    combined.sort(key=lambda x: x["score"], reverse=True)
+    return combined[:size]

@@ -30,7 +30,7 @@ def cli():
 
 @cli.command()
 def init():
-    """Initialize database and OpenSearch indices."""
+    """Initialize database and ChromaDB."""
     _setup_django()
     from django.conf import settings
     from django.core.management import call_command
@@ -43,12 +43,11 @@ def init():
     try:
         from search.client import is_available
         if is_available():
-            call_command("opensearch_init", verbosity=1)
-            click.echo("OpenSearch indices initialized.")
+            click.echo("ChromaDB initialized.")
         else:
-            click.echo("OpenSearch not available — skipping index creation.")
+            click.echo("ChromaDB not available (install prismadb[search]).")
     except Exception:
-        click.echo("OpenSearch not available — skipping index creation.")
+        click.echo("ChromaDB not available (install prismadb[search]).")
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +200,7 @@ def search(query, dataset, mode, top_k):
     from search.client import is_available
 
     if not is_available():
-        click.echo("Error: OpenSearch is not available. Install prismadb[search] and start OpenSearch.", err=True)
+        click.echo("Error: ChromaDB is not available. Install prismadb[search].", err=True)
         sys.exit(1)
 
     from embeddings.embedders import get_embedder
@@ -236,8 +235,8 @@ def search(query, dataset, mode, top_k):
         return
 
     for i, r in enumerate(results, 1):
-        score = r.get("_score", 0)
-        text = r.get("_source", {}).get("text", "")[:200]
+        score = r.get("score", 0)
+        text = r.get("text", "")[:200]
         click.echo(f"\n[{i}] score={score:.4f}")
         click.echo(f"    {text}...")
 

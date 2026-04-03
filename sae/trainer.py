@@ -107,16 +107,16 @@ def train_sae_run(run_id: int):
 
         print(f"[Run #{run.id}] Loading embeddings...")
 
-        # 1. Recupero dati - try OpenSearch first, fallback to SQLite
+        # 1. Recupero dati - try ChromaDB first, fallback to SQLite
         docs_vectors = None
         try:
             from search.client import is_available
             if is_available():
                 from search.bulk_ops import scroll_all_embeddings
                 docs_vectors = [emb for _, emb in scroll_all_embeddings(run.dataset_id)]
-                print(f"[Run #{run.id}] Loaded {len(docs_vectors)} embeddings from OpenSearch")
+                print(f"[Run #{run.id}] Loaded {len(docs_vectors)} embeddings from ChromaDB")
         except Exception as e:
-            print(f"[Run #{run.id}] OpenSearch unavailable ({e}), falling back to SQLite")
+            print(f"[Run #{run.id}] ChromaDB unavailable ({e}), falling back to SQLite")
 
         if not docs_vectors:
             docs_vectors = list(run.dataset.documents.filter(status='done').values_list('embedding', flat=True))

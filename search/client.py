@@ -1,9 +1,9 @@
 import logging
 
 try:
-    from opensearchpy import OpenSearch
+    import chromadb
 except ImportError:
-    OpenSearch = None
+    chromadb = None
 
 logger = logging.getLogger(__name__)
 
@@ -11,22 +11,14 @@ _client = None
 
 
 def get_client():
-    """Singleton OpenSearch client, configured from DB settings."""
+    """Singleton ChromaDB persistent client."""
     global _client
-    if OpenSearch is None:
+    if chromadb is None:
         return None
     if _client is None:
-        from project.utils import get_setting
-        _client = OpenSearch(
-            hosts=[{
-                'host': get_setting('opensearch_host'),
-                'port': int(get_setting('opensearch_port')),
-            }],
-            use_ssl=get_setting('opensearch_use_ssl').lower() in ('true', '1', 'yes'),
-            verify_certs=False,
-            ssl_show_warn=False,
-            timeout=30,
-        )
+        from django.conf import settings
+        persist_dir = str(settings.PRISMADB_HOME / "chromadb_data")
+        _client = chromadb.PersistentClient(path=persist_dir)
     return _client
 
 
@@ -37,11 +29,12 @@ def reset_client():
 
 
 def is_available():
-    """Check if OpenSearch is reachable."""
+    """Check if ChromaDB is available."""
     try:
         client = get_client()
         if client is None:
             return False
-        return client.ping()
+        client.heartbeat()
+        return True
     except Exception:
         return False

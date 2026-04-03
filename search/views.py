@@ -1,13 +1,14 @@
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 
 from embeddings.embedders import get_embedder
 from embeddings.models import Dataset
+from explorer.models import SAEFeature
 from sae.models import SAERun
 
 from .queries import (
     search_documents_bm25,
     search_documents_hybrid,
-    search_features,
     search_similar_documents,
 )
 
@@ -66,10 +67,24 @@ def search_page(request):
                     dataset.id, query, size=20
                 )
 
-    # Feature search
+    # Feature search (via Django ORM)
     if run_id:
         run = get_object_or_404(SAERun, pk=run_id)
         context['selected_run'] = run
-        context['feature_results'] = search_features(run.id, query, size=50)
+        feature_qs = SAEFeature.objects.filter(
+            Q(run=run) & (Q(label__icontains=query) | Q(description__icontains=query))
+        ).order_by('-max_activation')[:50]
+        context['feature_results'] = [
+            {
+                'feature_index': f.feature_index,
+                'label': f.label,
+                'description': f.description,
+                'density': f.density,
+                'max_activation': f.max_activation,
+                'mean_activation': f.mean_activation,
+                'variance_activation': f.variance_activation,
+            }
+            for f in feature_qs
+        ]
 
     return render(request, 'search/search.html', context)

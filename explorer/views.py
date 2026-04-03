@@ -70,26 +70,11 @@ def feature_list(request, run_id):
     features = run.features.all()
 
     if query:
-        # Phase 4: Try OpenSearch for feature search, fallback to SQLite
-        os_feature_ids = None
-        try:
-            from search.client import is_available
-            if is_available():
-                from search.queries import search_features as os_search_features
-                os_results = os_search_features(run.id, query, size=250)
-                if os_results:
-                    os_feature_ids = [r['feature_index'] for r in os_results]
-        except Exception:
-            os_feature_ids = None
-
-        if os_feature_ids is not None:
-            features = features.filter(feature_index__in=os_feature_ids)
-        else:
-            features = features.filter(
-                Q(label__icontains=query) |
-                Q(description__icontains=query) |
-                Q(feature_index__icontains=query)
-            )
+        features = features.filter(
+            Q(label__icontains=query) |
+            Q(description__icontains=query) |
+            Q(feature_index__icontains=query)
+        )
 
     features = features.order_by('-max_activation')
 
@@ -343,29 +328,19 @@ def document_analyzer(request):
         if str(doc.dataset_id) == str(dataset_id):
             context['selected_doc'] = doc
 
-            # --- A. Embedding Info & Similarità ---
-            # Get embedding: try OpenSearch first, then SQLite
-            doc_embedding = None
-            try:
-                from search.client import is_available
-                if is_available():
-                    from search.bulk_ops import get_document_embedding
-                    doc_embedding = get_document_embedding(int(dataset_id), doc.id)
-            except Exception:
-                pass
-            if doc_embedding is None:
-                doc_embedding = doc.embedding
+            # --- A. Embedding Info & Similarity ---
+            doc_embedding = doc.embedding
 
             if doc_embedding:
                 try:
                     target_emb = np.array(doc_embedding)
                     context['embedding_norm'] = float(np.linalg.norm(target_emb))
 
-                    # Try OpenSearch kNN for similarity search
+                    # kNN similarity search via ChromaDB
                     knn_results = None
                     try:
-                        from search.client import is_available as os_avail
-                        if os_avail():
+                        from search.client import is_available as chroma_avail
+                        if chroma_avail():
                             from search.queries import search_similar_documents
                             knn_results = search_similar_documents(
                                 int(dataset_id), doc_embedding, k=5, exclude_id=doc.id
@@ -484,8 +459,6 @@ def system_status(request):
     from project.utils import get_setting
     return render(request, 'explorer/system_status.html', {
         'ollama_url': get_setting('ollama_base_url'),
-        'opensearch_host': get_setting('opensearch_host'),
-        'opensearch_port': get_setting('opensearch_port'),
         'prismadb_version': settings.PRISMADB_VERSION,
     })
 
@@ -647,7 +620,7 @@ def get_system_stats(request):
 
 
 def get_services_status(request):
-    """Check connectivity to Ollama and OpenSearch."""
+    """Check connectivity to Ollama and ChromaDB."""
     import requests as req
 
     from project.utils import get_setting
@@ -665,21 +638,17 @@ def get_services_status(request):
     except Exception:
         pass
 
-    # OpenSearch
-    opensearch_ok = False
-    opensearch_info = {}
-    os_host = get_setting('opensearch_host')
-    os_port = get_setting('opensearch_port')
+    # ChromaDB
+    chromadb_ok = False
+    chromadb_info = {}
     try:
         from search.client import get_client, is_available
-        opensearch_ok = is_available()
-        if opensearch_ok:
+        chromadb_ok = is_available()
+        if chromadb_ok:
             client = get_client()
-            health = client.cluster.health()
-            opensearch_info = {
-                'cluster_name': health.get('cluster_name', ''),
-                'status': health.get('status', ''),
-                'number_of_nodes': health.get('number_of_nodes', 0),
+            chromadb_info = {
+                'collections': len(client.list_collections()),
+                'path': str(settings.PRISMADB_HOME / "chromadb_data"),
             }
     except Exception:
         pass
@@ -690,10 +659,9 @@ def get_services_status(request):
             'url': ollama_url,
             'models': ollama_models,
         },
-        'opensearch': {
-            'connected': opensearch_ok,
-            'host': f"{os_host}:{os_port}",
-            **opensearch_info,
+        'chromadb': {
+            'connected': chromadb_ok,
+            **chromadb_info,
         },
         'version': settings.PRISMADB_VERSION,
     })
@@ -734,43 +702,23 @@ def update_ollama_url(request):
     })
 
 
-@csrf_exempt
-def update_opensearch(request):
-    """Update OpenSearch host and port at runtime."""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
-
-    import json
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
-
-    host = body.get('host', '').strip()
-    port = body.get('port', '').strip()
-    if not host or not port:
-        return JsonResponse({'success': False, 'error': 'Host and port are required'}, status=400)
-
-    from project.utils import set_setting
-    set_setting('opensearch_host', host)
-    set_setting('opensearch_port', port)
-
-    # Reset singleton so next call picks up new settings
-    from search.client import reset_client
-    reset_client()
-
-    # Test connection
+def chromadb_status(request):
+    """Check ChromaDB status."""
     connected = False
+    info = {}
     try:
-        from search.client import is_available
+        from search.client import get_client, is_available
         connected = is_available()
+        if connected:
+            client = get_client()
+            info['collections'] = len(client.list_collections())
+            info['path'] = str(settings.PRISMADB_HOME / "chromadb_data")
     except Exception:
         pass
 
     return JsonResponse({
-        'success': True,
-        'host': f"{host}:{port}",
         'connected': connected,
+        **info,
     })
 
 

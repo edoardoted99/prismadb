@@ -45,7 +45,7 @@ def load_sae_model(run, device):
 def scan_single_feature_examples(run, feature_index, k=10):
     """
     Scansiona il dataset SOLO per una specifica feature.
-    Uses OpenSearch scroll if available, otherwise falls back to SQLite.
+    Uses ChromaDB scroll if available, otherwise falls back to SQLite.
     """
     device = get_device()
     logger.info(f"[Interpreter] Single-scan for feature {feature_index} on {device}...")
@@ -59,19 +59,19 @@ def scan_single_feature_examples(run, feature_index, k=10):
     truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
     processed = 0
 
-    # Try OpenSearch scroll first
-    use_opensearch = False
+    # Try ChromaDB scroll first
+    use_chromadb = False
     try:
         from search.client import is_available
         if is_available():
             from search.bulk_ops import count_documents, scroll_documents_in_batches
             total = count_documents(run.dataset_id)
-            use_opensearch = True
-            logger.info(f"[Interpreter] Scanning {total} documents via OpenSearch for feature {feature_index}...")
+            use_chromadb = True
+            logger.info(f"[Interpreter] Scanning {total} documents via ChromaDB for feature {feature_index}...")
     except Exception:
-        use_opensearch = False
+        use_chromadb = False
 
-    if use_opensearch:
+    if use_chromadb:
         for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
                                                        fields=['django_id', 'text', 'embedding']):
             embeddings = [d['embedding'] for d in batch_data if d.get('embedding')]
@@ -156,7 +156,7 @@ def scan_single_feature_examples(run, feature_index, k=10):
 def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=None):
     """
     Recupera k esempi negativi (attivazione zero o molto bassa) per una feature.
-    Uses OpenSearch random_score if available, otherwise falls back to SQLite.
+    Uses ChromaDB random_score if available, otherwise falls back to SQLite.
     """
     device = get_device()
     if not model:
@@ -171,7 +171,7 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
     while len(negatives) < k and attempts < max_attempts:
         attempts += 1
 
-        # Try OpenSearch random docs first
+        # Try ChromaDB random docs first
         random_docs_data = None
         try:
             from search.client import is_available
@@ -382,21 +382,21 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
         batch_size = 512
         processed = 0
 
-        # Try OpenSearch scroll first, fallback to SQLite
-        use_opensearch = False
+        # Try ChromaDB scroll first, fallback to SQLite
+        use_chromadb = False
         try:
             from search.client import is_available
             if is_available():
                 from search.bulk_ops import count_documents, scroll_documents_in_batches
                 total_docs = count_documents(run.dataset_id)
-                use_opensearch = True
+                use_chromadb = True
         except Exception:
-            use_opensearch = False
+            use_chromadb = False
 
-        if not use_opensearch:
+        if not use_chromadb:
             total_docs = run.dataset.documents.filter(status='done').count()
 
-        logger.info(f"[Interpreter] Scanning {total_docs} documents ({'OpenSearch' if use_opensearch else 'SQLite'})...")
+        logger.info(f"[Interpreter] Scanning {total_docs} documents ({'ChromaDB' if use_chromadb else 'SQLite'})...")
 
         def _process_batch(batch_embeddings, batch_docs_info):
             """Process a batch: encode with SAE, track top activations."""
@@ -431,7 +431,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             except Exception as e:
                 logger.error(f"[Interpreter] Batch error: {e}")
 
-        if use_opensearch:
+        if use_chromadb:
             for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
                                                            fields=['django_id', 'text', 'embedding']):
                 if TASK_CONTROL.get(run_id) == 'STOP':
@@ -583,24 +583,6 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 # LINK ACTIVE INTERPRETATION
                 feat_obj.active_interpretation = interp
                 feat_obj.save()
-
-                # Phase 4: Index feature in OpenSearch
-                try:
-                    from search.client import is_available
-                    if is_available():
-                        from search.bulk_ops import update_feature
-                        from search.indices import create_feature_index
-                        create_feature_index(run.id)
-                        update_feature(run.id, feat_obj.id, {
-                            'django_id': feat_obj.id,
-                            'feature_index': f_idx,
-                            'label': feat_obj.label or '',
-                            'description': feat_obj.description or '',
-                            'max_activation': float(max_act),
-                            'example_docs': formatted_docs,
-                        })
-                except Exception as os_err:
-                    logger.warning(f"[OpenSearch] Failed to index feature: {os_err}")
 
                 logger.info(f"   > SUCCESS: {result.get('label')} ({time.time()-start_ts:.1f}s)")
                 success_count += 1

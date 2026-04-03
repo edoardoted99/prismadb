@@ -93,12 +93,12 @@ def delete_dataset(request, pk):
     if request.method == "POST":
         name = dataset.name
 
-        # Delete OpenSearch index
+        # Delete ChromaDB collection
         try:
             from search.client import is_available
             if is_available():
-                from search.indices import delete_document_index
-                delete_document_index(dataset.id)
+                from search.collections import delete_document_collection
+                delete_document_collection(dataset.id)
         except Exception:
             pass
 
