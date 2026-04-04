@@ -81,9 +81,24 @@ def start_generation(request, pk):
 def document_detail(request, doc_id):
     document = get_object_or_404(Document, pk=doc_id)
     dataset = document.dataset
+
+    # Fetch embedding metadata from ChromaDB
+    embedding_dim = None
+    embedding_preview = None
+    try:
+        from search.bulk_ops import get_document_embedding
+        emb = get_document_embedding(dataset.id, document.id)
+        if emb:
+            embedding_dim = len(emb)
+            embedding_preview = emb[:5]
+    except Exception:
+        pass
+
     context = {
         "document": document,
         "dataset": dataset,
+        "embedding_dim": embedding_dim,
+        "embedding_preview": embedding_preview,
     }
     return render(request, "embeddings/document_detail.html", context)
 

@@ -105,38 +105,16 @@ def calculate_statistics_pipeline(run_id):
         target_set = set(existing_features)
         processed = 0
 
-        # Try ChromaDB scroll first, fallback to SQLite
-        use_chromadb = False
-        try:
-            from search.client import is_available
-            if is_available():
-                from search.bulk_ops import count_documents, scroll_documents_in_batches
-                total_docs = count_documents(run.dataset_id)
-                use_chromadb = True
-                logger.info("[Stats] Using ChromaDB for dataset scan.")
-        except Exception:
-            use_chromadb = False
-
-        if not use_chromadb:
-            doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-            total_docs = doc_qs.count()
-            logger.info("[Stats] Using SQLite for dataset scan.")
+        from search.bulk_ops import count_documents, scroll_documents_in_batches
+        total_docs = count_documents(run.dataset_id)
+        logger.info(f"[Stats] Scanning {total_docs} documents (ChromaDB)...")
 
         def _get_batch_iterator():
             """Yields lists of embeddings per batch."""
-            if use_chromadb:
-                for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
-                                                               fields=['embedding']):
-                    emb_list = [d['embedding'] for d in batch_data if d.get('embedding')]
-                    yield emb_list, len(batch_data)
-            else:
-                offset = 0
-                while offset < total_docs:
-                    batch_docs = list(doc_qs[offset:offset+batch_size])
-                    if not batch_docs: break
-                    emb_list = [d.embedding for d in batch_docs if d.embedding]
-                    yield emb_list, len(batch_docs)
-                    offset += batch_size
+            for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                           fields=['embedding']):
+                emb_list = [d['embedding'] for d in batch_data if d.get('embedding') is not None]
+                yield emb_list, len(batch_data)
 
         for emb_list, batch_len in _get_batch_iterator():
             if not emb_list:

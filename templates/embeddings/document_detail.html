@@ -9,7 +9,7 @@
   </a>
   <div class="d-flex justify-content-between align-items-center">
     <h1 class="h3 mb-0">Documento <span class="font-monospace text-accent">#{{ document.external_id }}</span></h1>
-    
+
     <div class="badge bg-dark border border-secondary border-opacity-25 px-3 py-2">
       {% if document.status == 'done' %}
         <span class="status-done"><span class="badge-dot"></span> Processato</span>
@@ -43,27 +43,24 @@
   <!-- Colonna Embedding / Metadati -->
   <div class="col-lg-4">
     <div class="panel">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="h6 text-uppercase text-muted mb-0 ls-1">Vettore Embedding</h5>
-        {% if document.embedding %}
-          <button onclick="copyEmbedding()" class="btn btn-sm btn-ghost py-0" id="copyBtn">
-            <i class="bi bi-clipboard me-1"></i> Copia
-          </button>
-        {% endif %}
-      </div>
+      <h5 class="h6 text-uppercase text-muted mb-3 ls-1">Vettore Embedding</h5>
 
-      {% if document.embedding %}
+      {% if embedding_dim %}
         <div class="bg-black rounded p-3 border border-secondary border-opacity-10 mb-3 position-relative overflow-hidden">
           <div class="font-monospace text-muted small" style="word-break: break-all; max-height: 150px; overflow-y: auto;">
-            [{{ document.embedding|slice:":5"|join:", " }}, ... ]
+            [{{ embedding_preview|join:", " }}, ... ]
           </div>
-          <div class="position-absolute bottom-0 start-0 w-100 h-50 bg-gradient-to-t from-black to-transparent" style="pointer-events: none; background: linear-gradient(to top, #000 10%, transparent);"></div>
+          <div class="position-absolute bottom-0 start-0 w-100 h-50" style="pointer-events: none; background: linear-gradient(to top, #000 10%, transparent);"></div>
         </div>
-        
+
         <ul class="list-unstyled small text-muted mb-0">
           <li class="d-flex justify-content-between border-bottom border-secondary border-opacity-10 py-2">
             <span>Dimensioni</span>
-            <span class="text-main font-monospace">{{ document.embedding|length }} dim</span>
+            <span class="text-main font-monospace">{{ embedding_dim }} dim</span>
+          </li>
+          <li class="d-flex justify-content-between border-bottom border-secondary border-opacity-10 py-2">
+            <span>Storage</span>
+            <span class="text-main">ChromaDB</span>
           </li>
           <li class="d-flex justify-content-between border-bottom border-secondary border-opacity-10 py-2">
             <span>Creato il</span>
@@ -71,12 +68,9 @@
           </li>
           <li class="d-flex justify-content-between py-2">
             <span>Model</span>
-            <span class="text-main">{{ dataset.get_model_name_display }}</span>
+            <span class="text-main">{{ dataset.model_name }}</span>
           </li>
         </ul>
-
-        <!-- Hidden input for JS copy -->
-        <textarea id="embeddingFull" class="d-none">{{ document.embedding }}</textarea>
 
       {% else %}
         <div class="text-center py-4 text-muted">
@@ -87,25 +81,4 @@
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-  function copyEmbedding() {
-    const el = document.getElementById('embeddingFull');
-    if(!el) return;
-    
-    navigator.clipboard.writeText(el.value).then(() => {
-      const btn = document.getElementById('copyBtn');
-      const originalHtml = btn.innerHTML;
-      btn.innerHTML = '<i class="bi bi-check2"></i> Copiato!';
-      btn.classList.add('text-success', 'border-success');
-      
-      setTimeout(() => {
-        btn.innerHTML = originalHtml;
-        btn.classList.remove('text-success', 'border-success');
-      }, 2000);
-    });
-  }
-</script>
 {% endblock %}

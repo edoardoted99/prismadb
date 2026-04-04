@@ -25,7 +25,7 @@ def search_similar_documents(dataset_id, embedding, k=5, exclude_id=None):
             hits.append({
                 "django_id": meta["django_id"],
                 "external_id": meta.get("external_id", ""),
-                "text": results["documents"][0][i] if results.get("documents") else "",
+                "text": results["documents"][0][i] if results.get("documents") is not None else "",
                 "score": 1.0 - results["distances"][0][i],  # cosine distance -> similarity
             })
         return hits[:k]

@@ -44,12 +44,21 @@ class SAERun(models.Model):
 
     # Final Metrics
     final_loss = models.FloatField(null=True, blank=True)
+    dead_neuron_ratio = models.FloatField(null=True, blank=True, help_text="Fraction of latent neurons that never activate")
+    mean_l0 = models.FloatField(null=True, blank=True, help_text="Average number of active features per input")
+    sparsity_index = models.FloatField(null=True, blank=True, help_text="1 - mean_l0/d_latent, normalized [0,1]")
 
     # History Log: list of dicts [{'epoch':1, 'loss':0.5}, ...]
     training_log = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def dead_pct(self):
+        if self.dead_neuron_ratio is not None:
+            return round(self.dead_neuron_ratio * 100, 1)
+        return None
 
     def __str__(self):
         return f"Run #{self.id} [{self.dataset.name}] - {self.get_status_display()}"

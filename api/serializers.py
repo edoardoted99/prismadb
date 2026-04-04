@@ -45,7 +45,10 @@ class DocumentSerializer(serializers.ModelSerializer):
 class DocumentDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
-        fields = "__all__"
+        fields = [
+            "id", "dataset", "external_id", "text", "status",
+            "error_message", "created_at",
+        ]
 
 
 class SAERunSerializer(serializers.ModelSerializer):

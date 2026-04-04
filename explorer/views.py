@@ -329,7 +329,8 @@ def document_analyzer(request):
             context['selected_doc'] = doc
 
             # --- A. Embedding Info & Similarity ---
-            doc_embedding = doc.embedding
+            from search.bulk_ops import get_document_embedding
+            doc_embedding = get_document_embedding(int(dataset_id), doc.id)
 
             if doc_embedding:
                 try:
@@ -337,16 +338,10 @@ def document_analyzer(request):
                     context['embedding_norm'] = float(np.linalg.norm(target_emb))
 
                     # kNN similarity search via ChromaDB
-                    knn_results = None
-                    try:
-                        from search.client import is_available as chroma_avail
-                        if chroma_avail():
-                            from search.queries import search_similar_documents
-                            knn_results = search_similar_documents(
-                                int(dataset_id), doc_embedding, k=5, exclude_id=doc.id
-                            )
-                    except Exception:
-                        knn_results = None
+                    from search.queries import search_similar_documents
+                    knn_results = search_similar_documents(
+                        int(dataset_id), doc_embedding, k=5, exclude_id=doc.id
+                    )
 
                     if knn_results:
                         for hit in knn_results:
@@ -358,34 +353,6 @@ def document_analyzer(request):
                                 })
                             except Document.DoesNotExist:
                                 pass
-                    else:
-                        # Fallback: manual cosine similarity via SQLite
-                        other_docs = Document.objects.filter(dataset_id=dataset_id).exclude(id=doc.id)
-
-                        target_tensor = torch.tensor([doc_embedding])
-                        batch_embs = []
-                        batch_ids = []
-
-                        limit = 2000
-                        for d in other_docs.iterator(chunk_size=1000):
-                            if d.embedding and len(d.embedding) > 0:
-                                batch_embs.append(d.embedding)
-                                batch_ids.append(d)
-                                if len(batch_embs) >= limit:
-                                    break
-
-                        if batch_embs:
-                            others_tensor = torch.tensor(batch_embs)
-                            sims = torch.nn.functional.cosine_similarity(target_tensor, others_tensor)
-
-                            k_neigh = min(5, len(batch_embs))
-                            top_vals, top_idxs = torch.topk(sims, k=k_neigh)
-
-                            for val, idx in zip(top_vals, top_idxs):
-                                context['similar_docs'].append({
-                                    'doc': batch_ids[idx.item()],
-                                    'score': val.item()
-                                })
 
                 except Exception as e:
                     print(f"[Sim Error] {e}")
@@ -402,9 +369,9 @@ def document_analyzer(request):
                             emb_tensor = zscore_transform(emb_tensor, mean, std)
 
                         with torch.no_grad():
-                            acts = model.encode(emb_tensor)[0]
+                            _, _, h_topk = model(emb_tensor)
+                            acts = h_topk[0]
 
-                        # Filtro attivazioni
                         non_zero = torch.nonzero(acts > 0.0001).flatten()
                         values = acts[non_zero].tolist()
                         indices = non_zero.tolist()
@@ -873,41 +840,46 @@ def export_document_activations(request, run_id):
             yield "ERROR: SAE Model not found.\n"
             return
 
-        documents = dataset.documents.filter(status='done').iterator(chunk_size=100)
+        from search.bulk_ops import scroll_documents_in_batches
 
-        for doc in documents:
-            if not doc.embedding:
-                continue
+        for batch_data in scroll_documents_in_batches(dataset.id, batch_size=100,
+                                                       fields=['django_id', 'embedding']):
+            for doc_data in batch_data:
+                embedding = doc_data.get('embedding')
+                if embedding is None:
+                    continue
 
-            try:
-                # Encode
-                emb_tensor = torch.tensor([doc.embedding], dtype=torch.float32)
-                if mean is not None:
-                    emb_tensor = zscore_transform(emb_tensor, mean, std)
+                django_id = doc_data['django_id']
+                try:
+                    doc = Document.objects.get(pk=django_id)
+                except Document.DoesNotExist:
+                    continue
 
-                with torch.no_grad():
-                    acts = model.encode(emb_tensor)[0]
+                try:
+                    emb_tensor = torch.tensor([embedding], dtype=torch.float32)
+                    if mean is not None:
+                        emb_tensor = zscore_transform(emb_tensor, mean, std)
 
-                # Get Sparse Vector (feature_index: value)
-                non_zero = torch.nonzero(acts > 0.0001).flatten()
-                values = acts[non_zero].tolist()
-                indices = non_zero.tolist()
+                    with torch.no_grad():
+                        _, _, h_topk = model(emb_tensor)
+                        acts = h_topk[0]
 
-                sparse_vector = {idx: round(val, 4) for idx, val in zip(indices, values)}
-                sparse_json = json.dumps(sparse_vector)
+                    non_zero = torch.nonzero(acts > 0.0001).flatten()
+                    values = acts[non_zero].tolist()
+                    indices = non_zero.tolist()
 
-                # Clean text snippet (escape newlines/quotes for CSV)
-                truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
-                text_snippet = doc.text[:truncate_len].replace('"', '""').replace('\n', ' ')
+                    sparse_vector = {idx: round(val, 4) for idx, val in zip(indices, values)}
+                    sparse_json = json.dumps(sparse_vector)
 
-                # Double quote escape for CSV format in f-string
-                escaped_json = sparse_json.replace('"', '""')
+                    truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
+                    text_snippet = doc.text[:truncate_len].replace('"', '""').replace('\n', ' ')
+                    escaped_json = sparse_json.replace('"', '""')
 
-                yield f'{doc.external_id},"{text_snippet}","{escaped_json}"\n'
+                    yield f'{doc.external_id},"{text_snippet}","{escaped_json}"\n'
 
-            except Exception as e:
-                print(f"Error exporting doc {doc.id}: {e}")
-                continue
+                except Exception as e:
+                    print(f"Error exporting doc {doc.id}: {e}")
+                    continue
 
     response = StreamingHttpResponse(
         csv_generator(),
@@ -957,7 +929,8 @@ def inference_view(request):
                             emb_tensor = zscore_transform(emb_tensor, mean, std)
 
                         with torch.no_grad():
-                            acts = model.encode(emb_tensor)[0]
+                            _, _, h_topk = model(emb_tensor)
+                            acts = h_topk[0]
 
                         # 3. Filter & Format Results
                         # Filter > 0.0001 to remove noise

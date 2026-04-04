@@ -59,90 +59,42 @@ def scan_single_feature_examples(run, feature_index, k=10):
     truncate_len = getattr(settings, 'EXPLORER_DOC_TRUNCATION_LIMIT', 500)
     processed = 0
 
-    # Try ChromaDB scroll first
-    use_chromadb = False
-    try:
-        from search.client import is_available
-        if is_available():
-            from search.bulk_ops import count_documents, scroll_documents_in_batches
-            total = count_documents(run.dataset_id)
-            use_chromadb = True
-            logger.info(f"[Interpreter] Scanning {total} documents via ChromaDB for feature {feature_index}...")
-    except Exception:
-        use_chromadb = False
+    from search.bulk_ops import count_documents, scroll_documents_in_batches
+    total = count_documents(run.dataset_id)
+    logger.info(f"[Interpreter] Scanning {total} documents (ChromaDB) for feature {feature_index}...")
 
-    if use_chromadb:
-        for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
-                                                       fields=['django_id', 'text', 'embedding']):
-            embeddings = [d['embedding'] for d in batch_data if d.get('embedding')]
-            if not embeddings:
-                processed += len(batch_data)
-                continue
-
-            try:
-                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-                X_batch = zscore_transform(X_batch, mean, std)
-
-                with torch.no_grad():
-                    _, _, h_topk = model(X_batch)
-                    feat_acts = h_topk[:, feature_index].cpu()
-
-                indices = torch.nonzero(feat_acts > 0.001).flatten()
-
-                for idx in indices:
-                    val = feat_acts[idx].item()
-                    doc = batch_data[idx.item()]
-                    text = doc.get('text', '')[:truncate_len]
-
-                    if len(top_heap) < k:
-                        heapq.heappush(top_heap, (val, doc['django_id'], text))
-                    elif val > top_heap[0][0]:
-                        heapq.heapreplace(top_heap, (val, doc['django_id'], text))
-            except Exception as e:
-                logger.error(f"[Interpreter] Error in batch processing: {e}")
-
+    for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                   fields=['django_id', 'text', 'embedding']):
+        embeddings = [d['embedding'] for d in batch_data if d.get('embedding') is not None]
+        if not embeddings:
             processed += len(batch_data)
-            if processed % 1000 == 0:
-                logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
-    else:
-        # Fallback: SQLite
-        doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-        total = doc_qs.count()
-        logger.info(f"[Interpreter] Scanning {total} documents via SQLite for feature {feature_index}...")
+            continue
 
-        for offset in range(0, total, batch_size):
-            batch_docs = list(doc_qs[offset:offset+batch_size])
-            if not batch_docs: break
+        try:
+            X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+            X_batch = zscore_transform(X_batch, mean, std)
 
-            embeddings = [d.embedding for d in batch_docs if d.embedding]
-            if not embeddings:
-                processed += len(batch_docs)
-                continue
+            with torch.no_grad():
+                _, _, h_topk = model(X_batch)
+                feat_acts = h_topk[:, feature_index].cpu()
 
-            try:
-                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-                X_batch = zscore_transform(X_batch, mean, std)
+            indices = torch.nonzero(feat_acts > 0.001).flatten()
 
-                with torch.no_grad():
-                    _, _, h_topk = model(X_batch)
-                    feat_acts = h_topk[:, feature_index].cpu()
+            for idx in indices:
+                val = feat_acts[idx].item()
+                doc = batch_data[idx.item()]
+                text = doc.get('text', '')[:truncate_len]
 
-                indices = torch.nonzero(feat_acts > 0.001).flatten()
+                if len(top_heap) < k:
+                    heapq.heappush(top_heap, (val, doc['django_id'], text))
+                elif val > top_heap[0][0]:
+                    heapq.heapreplace(top_heap, (val, doc['django_id'], text))
+        except Exception as e:
+            logger.error(f"[Interpreter] Error in batch processing: {e}")
 
-                for idx in indices:
-                    val = feat_acts[idx].item()
-                    doc = batch_docs[idx.item()]
-
-                    if len(top_heap) < k:
-                        heapq.heappush(top_heap, (val, doc.id, doc.text[:truncate_len]))
-                    elif val > top_heap[0][0]:
-                        heapq.heapreplace(top_heap, (val, doc.id, doc.text[:truncate_len]))
-            except Exception as e:
-                logger.error(f"[Interpreter] Error in batch processing: {e}")
-
-            processed += len(batch_docs)
-            if processed % 1000 == 0:
-                logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
+        processed += len(batch_data)
+        if processed % 1000 == 0:
+            logger.info(f"[Interpreter] Scanned {processed}/{total} docs...")
 
     results = sorted(top_heap, key=lambda x: x[0], reverse=True)
     logger.info(f"[Interpreter] Scan finished. Found {len(results)} examples > 0.001")
@@ -171,62 +123,34 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
     while len(negatives) < k and attempts < max_attempts:
         attempts += 1
 
-        # Try ChromaDB random docs first
-        random_docs_data = None
+        from search.bulk_ops import get_random_documents
+        random_docs_data = get_random_documents(run.dataset_id, k=k*2)
+
+        if not random_docs_data:
+            break
+
+        embeddings = [d['embedding'] for d in random_docs_data if d.get('embedding') is not None]
+        if not embeddings: continue
+
         try:
-            from search.client import is_available
-            if is_available():
-                from search.queries import get_random_documents
-                random_docs_data = get_random_documents(run.dataset_id, k=k*2)
-        except Exception:
-            random_docs_data = None
+            X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
+            X_batch = zscore_transform(X_batch, mean, std)
 
-        if random_docs_data:
-            embeddings = [d['embedding'] for d in random_docs_data if d.get('embedding')]
-            if not embeddings: continue
+            with torch.no_grad():
+                _, _, h_topk = model(X_batch)
+                feat_acts = h_topk[:, feature_index].cpu()
 
-            try:
-                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-                X_batch = zscore_transform(X_batch, mean, std)
-
-                with torch.no_grad():
-                    _, _, h_topk = model(X_batch)
-                    feat_acts = h_topk[:, feature_index].cpu()
-
-                for i, val in enumerate(feat_acts):
-                    if val.item() < 0.001:
-                        doc = random_docs_data[i]
-                        doc_id = doc['django_id']
-                        if not any(d['id'] == doc_id for d in negatives):
-                            text = doc.get('text', '')[:truncate_len]
-                            negatives.append({'id': doc_id, 'act': val.item(), 'text': text})
-                            if len(negatives) >= k: break
-            except Exception as e:
-                logger.error(f"[Interpreter] Error finding negatives: {e}")
-                break
-        else:
-            # Fallback: SQLite
-            random_docs = list(run.dataset.documents.filter(status='done').order_by('?')[:k*2])
-            embeddings = [d.embedding for d in random_docs if d.embedding]
-            if not embeddings: continue
-
-            try:
-                X_batch = torch.tensor(embeddings, dtype=torch.float32).to(device)
-                X_batch = zscore_transform(X_batch, mean, std)
-
-                with torch.no_grad():
-                    _, _, h_topk = model(X_batch)
-                    feat_acts = h_topk[:, feature_index].cpu()
-
-                for i, val in enumerate(feat_acts):
-                    if val.item() < 0.001:
-                        doc = random_docs[i]
-                        if not any(d['id'] == doc.id for d in negatives):
-                            negatives.append({'id': doc.id, 'act': val.item(), 'text': doc.text[:truncate_len]})
-                            if len(negatives) >= k: break
-            except Exception as e:
-                logger.error(f"[Interpreter] Error finding negatives: {e}")
-                break
+            for i, val in enumerate(feat_acts):
+                if val.item() < 0.001:
+                    doc = random_docs_data[i]
+                    doc_id = doc['django_id']
+                    if not any(d['id'] == doc_id for d in negatives):
+                        text = doc.get('text', '')[:truncate_len]
+                        negatives.append({'id': doc_id, 'act': val.item(), 'text': text})
+                        if len(negatives) >= k: break
+        except Exception as e:
+            logger.error(f"[Interpreter] Error finding negatives: {e}")
+            break
 
     return negatives[:k]
 
@@ -465,21 +389,10 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
         batch_size = 512
         processed = 0
 
-        # Try ChromaDB scroll first, fallback to SQLite
-        use_chromadb = False
-        try:
-            from search.client import is_available
-            if is_available():
-                from search.bulk_ops import count_documents, scroll_documents_in_batches
-                total_docs = count_documents(run.dataset_id)
-                use_chromadb = True
-        except Exception:
-            use_chromadb = False
+        from search.bulk_ops import count_documents, scroll_documents_in_batches
+        total_docs = count_documents(run.dataset_id)
 
-        if not use_chromadb:
-            total_docs = run.dataset.documents.filter(status='done').count()
-
-        logger.info(f"[Interpreter] Scanning {total_docs} documents ({'ChromaDB' if use_chromadb else 'SQLite'})...")
+        logger.info(f"[Interpreter] Scanning {total_docs} documents (ChromaDB)...")
 
         def _process_batch(batch_embeddings, batch_docs_info):
             """Process a batch: encode with SAE, track top activations."""
@@ -514,47 +427,24 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
             except Exception as e:
                 logger.error(f"[Interpreter] Batch error: {e}")
 
-        if use_chromadb:
-            for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
-                                                           fields=['django_id', 'text', 'embedding']):
-                if TASK_CONTROL.get(run_id) == 'STOP':
-                    logger.info("[Interpreter] STOP signal received during scan. Aborting.")
-                    if tid in TASK_PROGRESS:
-                        TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
-                    return
-
-                embeddings = [d['embedding'] for d in batch_data if d.get('embedding')]
-                docs_info = [(d['django_id'], d.get('text', '')) for d in batch_data if d.get('embedding')]
-                _process_batch(embeddings, docs_info)
-
-                processed += len(batch_data)
-                pct = int((processed / total_docs) * 50) if total_docs > 0 else 0
+        for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=batch_size,
+                                                       fields=['django_id', 'text', 'embedding']):
+            if TASK_CONTROL.get(run_id) == 'STOP':
+                logger.info("[Interpreter] STOP signal received during scan. Aborting.")
                 if tid in TASK_PROGRESS:
-                    TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
-                if processed % 1000 == 0:
-                    logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs.")
-        else:
-            doc_qs = run.dataset.documents.filter(status='done').order_by('id')
-            for offset in range(0, total_docs, batch_size):
-                if TASK_CONTROL.get(run_id) == 'STOP':
-                    logger.info("[Interpreter] STOP signal received during scan. Aborting.")
-                    if tid in TASK_PROGRESS:
-                        TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
-                    return
+                    TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Paused by user.'})
+                return
 
-                batch_docs = list(doc_qs[offset:offset+batch_size])
-                if not batch_docs: break
+            embeddings = [d['embedding'] for d in batch_data if d.get('embedding') is not None]
+            docs_info = [(d['django_id'], d.get('text', '')) for d in batch_data if d.get('embedding') is not None]
+            _process_batch(embeddings, docs_info)
 
-                embeddings = [d.embedding for d in batch_docs if d.embedding]
-                docs_info = [(d.id, d.text) for d in batch_docs if d.embedding]
-                _process_batch(embeddings, docs_info)
-
-                processed += len(batch_docs)
-                pct = int((processed / total_docs) * 50) if total_docs > 0 else 0
-                if tid in TASK_PROGRESS:
-                    TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
-                if processed % 1000 == 0:
-                    logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs.")
+            processed += len(batch_data)
+            pct = int((processed / total_docs) * 50) if total_docs > 0 else 0
+            if tid in TASK_PROGRESS:
+                TASK_PROGRESS[tid].update({'progress': pct, 'message': f'Scanning docs ({processed}/{total_docs})...'})
+            if processed % 1000 == 0:
+                logger.info(f"[Interpreter] Processed {processed}/{total_docs} docs.")
 
         # --- 2. SELECT TOP FEATURES ---
         logger.info("\n[Interpreter] Selecting top features...")

@@ -19,13 +19,14 @@ def create_run(request):
         if form.is_valid():
             run = form.save(commit=False)
 
-            # Detect input dimension from dataset
-            first_doc = run.dataset.documents.filter(status='done').first()
-            if not first_doc or not first_doc.embedding:
-                messages.error(request, "Selected dataset has no valid embeddings.")
+            # Detect input dimension from ChromaDB
+            from search.bulk_ops import get_embedding_dim
+            input_dim = get_embedding_dim(run.dataset_id)
+            if not input_dim:
+                messages.error(request, "Selected dataset has no embeddings in ChromaDB.")
                 return render(request, 'sae/create_run.html', {'form': form})
 
-            run.input_dim = len(first_doc.embedding)
+            run.input_dim = input_dim
             run.status = 'queued'
             run.save()
 

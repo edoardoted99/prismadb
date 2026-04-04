@@ -14,12 +14,24 @@ def _ollama_base():
 
 
 def get_ollama_models():
-    """Returns all Ollama model names (for LLM chat/interpretation)."""
+    """Returns Ollama generative model names (excludes embedding-only models)."""
+    EMBEDDING_KEYWORDS = {'embed', 'bert', 'bge', 'e5', 'gte'}
     try:
         response = requests.get(f"{_ollama_base()}/api/tags", timeout=10)
         if response.status_code == 200:
             data = response.json()
-            return [m['name'] for m in data.get('models', [])]
+            generative_models = []
+            for m in data.get('models', []):
+                name = m.get('name', '').lower()
+                details = m.get('details', {})
+                family = details.get('family', '').lower()
+                families = [f.lower() for f in details.get('families', []) or []]
+
+                searchable = name + ' ' + family + ' ' + ' '.join(families)
+                if not any(kw in searchable for kw in EMBEDDING_KEYWORDS):
+                    generative_models.append(m['name'])
+
+            return generative_models
     except Exception as e:
         print(f"Ollama Error: {e}")
     return []

@@ -55,3 +55,6 @@ papers/
 
 # Large data files
 test_data.json
+
+# ChromaDB persistent storage
+chromadb_data/

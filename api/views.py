@@ -162,11 +162,8 @@ class SAERunViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         dataset = serializer.validated_data["dataset"]
-        first_doc = dataset.documents.filter(status=DOC_DONE).first()
-        if first_doc and first_doc.embedding:
-            input_dim = len(first_doc.embedding)
-        else:
-            input_dim = 0
+        from search.bulk_ops import get_embedding_dim
+        input_dim = get_embedding_dim(dataset.id) or 0
         serializer.save(input_dim=input_dim, status=RUN_QUEUED)
 
     @action(detail=True, methods=["post"])
@@ -340,7 +337,8 @@ def inference(request):
         emb_tensor = zscore_transform(emb_tensor, mean, std)
 
     with torch.no_grad():
-        acts = model.encode(emb_tensor)[0]
+        _, _, h_topk = model(emb_tensor)
+        acts = h_topk[0]
 
     # 3. Format results
     threshold = 0.0001

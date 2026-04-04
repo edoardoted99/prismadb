@@ -98,6 +98,64 @@ def ingest(file, model, name, description, embed, batch_size):
 
 
 # ---------------------------------------------------------------------------
+# ingest-hf
+# ---------------------------------------------------------------------------
+
+@cli.command("ingest-hf")
+@click.argument("repo_id")
+@click.option("--name", "-n", default=None, help="Dataset name (defaults to repo slug).")
+@click.option("--description", "-d", default="", help="Dataset description.")
+@click.option("--model", "-m", default="instructor-xl", help="Embedding model name for metadata.")
+@click.option("--text-column", default="abstract", help="Column containing text.")
+@click.option("--id-column", default="doi", help="Column containing document IDs.")
+@click.option("--embedding-column", default="embeddings", help="Column containing pre-computed embeddings.")
+@click.option("--limit", "-l", default=None, type=int, help="Max number of rows to ingest.")
+@click.option("--offset", default=0, type=int, help="Number of rows to skip.")
+@click.option("--split", default="train", help="HuggingFace split name.")
+@click.option("--batch-size", default=500, help="Batch size for DB inserts.")
+def ingest_hf(repo_id, name, description, model, text_column, id_column, embedding_column,
+              limit, offset, split, batch_size):
+    """Ingest a HuggingFace dataset with pre-computed embeddings.
+
+    REPO_ID is the HuggingFace dataset identifier (e.g. macrocosm/arxiv_abstracts).
+    """
+    _setup_django()
+    from embeddings.services import ingest_huggingface_dataset
+
+    if name is None:
+        name = repo_id.split("/")[-1]
+
+    total_label = f" (limit {limit})" if limit else ""
+    click.echo(f"Ingesting {repo_id}{total_label} as '{name}'...")
+    click.echo(f"Embedding model: {model} | text={text_column} id={id_column} emb={embedding_column}")
+
+    try:
+        from tqdm import tqdm
+        pbar = tqdm(unit="doc", desc="Ingesting")
+
+        def _progress(total_so_far):
+            pbar.update(total_so_far - pbar.n)
+
+        dataset = ingest_huggingface_dataset(
+            repo_id=repo_id, name=name, description=description, model_name=model,
+            text_column=text_column, id_column=id_column, embedding_column=embedding_column,
+            limit=limit, offset=offset, batch_size=batch_size, split=split,
+            progress_callback=_progress,
+        )
+        pbar.close()
+    except ImportError:
+        dataset = ingest_huggingface_dataset(
+            repo_id=repo_id, name=name, description=description, model_name=model,
+            text_column=text_column, id_column=id_column, embedding_column=embedding_column,
+            limit=limit, offset=offset, batch_size=batch_size, split=split,
+        )
+
+    n_docs = dataset.documents.count()
+    n_done = dataset.documents.filter(status="done").count()
+    click.echo(f"Created dataset #{dataset.id}: {n_done}/{n_docs} documents with embeddings.")
+
+
+# ---------------------------------------------------------------------------
 # train
 # ---------------------------------------------------------------------------
 
@@ -118,12 +176,11 @@ def train(dataset, expansion, top_k, epochs, lr, batch_size, alpha_aux):
     from sae.trainer import train_sae_run
 
     ds = Dataset.objects.get(pk=dataset)
-    first_doc = ds.documents.filter(status=DOC_DONE).first()
-    if not first_doc or not first_doc.embedding:
-        click.echo("Error: no embedded documents found. Run 'prismadb ingest' first.", err=True)
+    from search.bulk_ops import get_embedding_dim
+    input_dim = get_embedding_dim(ds.id)
+    if not input_dim:
+        click.echo("Error: no embeddings found in ChromaDB. Run 'prismadb ingest' first.", err=True)
         sys.exit(1)
-
-    input_dim = len(first_doc.embedding)
 
     run = SAERun.objects.create(
         dataset=ds,

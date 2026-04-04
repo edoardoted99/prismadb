@@ -188,28 +188,17 @@ def build_feature_families(run_id, threshold=0.1, n_iterations=3):
             C = torch.zeros((n_feats, n_feats))
             D = torch.zeros((n_feats, n_feats))
 
-            # Try ChromaDB for embeddings, fallback to SQLite
-            embs = None
-            try:
-                from search.client import is_available
-                if is_available():
-                    from search.bulk_ops import scroll_documents_in_batches
-                    embs = []
-                    for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=500,
-                                                                   fields=['embedding']):
-                        for d in batch_data:
-                            if d.get('embedding'):
-                                embs.append(d['embedding'])
-                            if len(embs) >= 2000:
-                                break
-                        if len(embs) >= 2000:
-                            break
-            except Exception:
-                embs = None
-
-            if embs is None:
-                docs = run.dataset.documents.filter(status='done')[:2000]
-                embs = [d.embedding for d in docs if d.embedding]
+            from search.bulk_ops import scroll_documents_in_batches
+            embs = []
+            for batch_data in scroll_documents_in_batches(run.dataset_id, batch_size=500,
+                                                           fields=['embedding']):
+                for d in batch_data:
+                    if d.get('embedding') is not None:
+                        embs.append(d['embedding'])
+                    if len(embs) >= 2000:
+                        break
+                if len(embs) >= 2000:
+                    break
 
             if embs:
                 X = torch.tensor(embs, dtype=torch.float32).to(device)

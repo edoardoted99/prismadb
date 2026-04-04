@@ -17,6 +17,7 @@ EMBEDDING_DIMS = {
     'gte_multilingual': 768,
     'sbert_mpnet': 768,
     'sbert_minilm': 384,
+    'instructor-xl': 768,
 }
 
 

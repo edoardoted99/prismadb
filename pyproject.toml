@@ -36,8 +36,9 @@ dependencies = [
 [project.optional-dependencies]
 search = ["chromadb>=0.5", "rank-bm25>=0.2.2"]
 api = ["djangorestframework>=3.15", "drf-spectacular>=0.27"]
+huggingface = ["datasets>=2.14"]
 dev = ["ruff", "pytest", "pytest-django"]
-all = ["prismadb[search,api]"]
+all = ["prismadb[search,api,huggingface]"]
 
 [project.scripts]
 prismadb = "project.cli:cli"

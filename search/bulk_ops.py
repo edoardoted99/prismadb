@@ -102,9 +102,9 @@ def scroll_documents_in_batches(dataset_id, batch_size=512, fields=None):
         batch = []
         for i in range(len(results["ids"])):
             doc = {"django_id": results["metadatas"][i]["django_id"]}
-            if "documents" in include and results.get("documents"):
+            if "documents" in include and results.get("documents") is not None:
                 doc["text"] = results["documents"][i]
-            if "embeddings" in include and results.get("embeddings"):
+            if "embeddings" in include and results.get("embeddings") is not None:
                 doc["embedding"] = results["embeddings"][i]
             # Pass through other metadata
             doc["external_id"] = results["metadatas"][i].get("external_id", "")
@@ -113,6 +113,28 @@ def scroll_documents_in_batches(dataset_id, batch_size=512, fields=None):
         if batch:
             yield batch
         offset += len(results["ids"])
+
+
+def get_document_embedding(dataset_id, django_id):
+    """Get a single document's embedding from ChromaDB by its Django ID."""
+    collection = get_or_create_document_collection(dataset_id)
+    result = collection.get(
+        ids=[str(django_id)],
+        include=["embeddings"],
+    )
+    if result["ids"] and result["embeddings"] is not None:
+        emb = result["embeddings"][0]
+        return emb.tolist() if hasattr(emb, 'tolist') else emb
+    return None
+
+
+def get_embedding_dim(dataset_id):
+    """Get the embedding dimension for a dataset from ChromaDB (peek first doc)."""
+    collection = get_or_create_document_collection(dataset_id)
+    result = collection.peek(limit=1)
+    if result["ids"] and result["embeddings"] is not None:
+        return len(result["embeddings"][0])
+    return None
 
 
 def count_documents(dataset_id):
@@ -134,8 +156,8 @@ def get_random_documents(dataset_id, k=10):
             {
                 "django_id": results["metadatas"][i]["django_id"],
                 "external_id": results["metadatas"][i].get("external_id", ""),
-                "text": results["documents"][i] if results.get("documents") else "",
-                "embedding": results["embeddings"][i] if results.get("embeddings") else None,
+                "text": results["documents"][i] if results.get("documents") is not None else "",
+                "embedding": results["embeddings"][i] if results.get("embeddings") is not None else None,
             }
             for i in range(len(results["ids"]))
         ]
@@ -153,7 +175,7 @@ def get_random_documents(dataset_id, k=10):
             docs.append({
                 "django_id": result["metadatas"][0]["django_id"],
                 "external_id": result["metadatas"][0].get("external_id", ""),
-                "text": result["documents"][0] if result.get("documents") else "",
-                "embedding": result["embeddings"][0] if result.get("embeddings") else None,
+                "text": result["documents"][0] if result.get("documents") is not None else "",
+                "embedding": result["embeddings"][0] if result.get("embeddings") is not None else None,
             })
     return docs
