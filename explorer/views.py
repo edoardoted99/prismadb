@@ -372,21 +372,20 @@ def document_analyzer(request):
                             _, _, h_topk = model(emb_tensor)
                             acts = h_topk[0]
 
-                        non_zero = torch.nonzero(acts > 0.0001).flatten()
-                        values = acts[non_zero].tolist()
-                        indices = non_zero.tolist()
-
-                        # Recupero info features
+                        # All features for this run
                         features_db = SAEFeature.objects.filter(
-                            run=run, feature_index__in=indices
+                            run=run
                         ).select_related('active_interpretation')
                         features_map = {f.feature_index: f for f in features_db}
 
+                        all_acts = acts.tolist()
                         analyzed_features = []
-                        for idx, val in zip(indices, values):
+                        active_count = 0
+
+                        for idx, val in enumerate(all_acts):
                             feat_obj = features_map.get(idx)
                             label = f"Feature #{idx}"
-                            desc = "" # Descrizione vuota di default per pulizia visiva
+                            desc = ""
 
                             if feat_obj:
                                 if hasattr(feat_obj, 'active_interpretation') and feat_obj.active_interpretation:
@@ -396,17 +395,22 @@ def document_analyzer(request):
                                     label = feat_obj.label
                                     desc = feat_obj.description
 
+                            if val > 0.0001:
+                                active_count += 1
+
                             analyzed_features.append({
                                 'index': idx,
                                 'activation': val,
                                 'label': label,
                                 'description': desc,
-                                'db_id': feat_obj.id if feat_obj else None
+                                'db_id': feat_obj.id if feat_obj else None,
+                                'active': val > 0.0001,
                             })
 
-                        # Sort per attivazione
+                        # Active first (sorted by activation desc), then inactive
                         analyzed_features.sort(key=lambda x: x['activation'], reverse=True)
                         context['activations'] = analyzed_features
+                        context['active_count'] = active_count
 
                 except Exception as e:
                     print(f"[SAE Error] {e}")

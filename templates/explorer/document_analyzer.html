@@ -154,6 +154,16 @@
         pointer-events: none;
     }
 
+    .barcode-line.barcode-inactive {
+        background: var(--border);
+        opacity: 0.15;
+        min-height: 3% !important;
+    }
+
+    .feature-row.feature-inactive {
+        opacity: 0.4;
+    }
+
     .content-box {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -354,10 +364,10 @@
                     <div>
                         <div class="text-white-50 text-uppercase small fw-bold mb-1"
                              style="font-size: 0.65rem;">
-                            Active Features
+                            Active / Total Features
                         </div>
                         <h4 class="text-white fw-bold mb-0 font-monospace">
-                            {{ activations|length }}
+                            {{ active_count }} <span class="text-muted fw-normal" style="font-size: 0.8rem;">/ {{ activations|length }}</span>
                         </h4>
                     </div>
 
@@ -404,14 +414,15 @@
                 <div class="barcode-track" id="barcodeTrack">
                     {% for feat in activations %}
                     <a href="{% url 'explorer:feature_detail' selected_run.id feat.index %}"
-                       class="barcode-line"
+                       class="barcode-line{% if not feat.active %} barcode-inactive{% endif %}"
                        target="_blank"
-                       style="min-height: 15%;"
+                       style="min-height: {% if feat.active %}15%{% else %}3%{% endif %};"
                        data-label="{{ feat.label }}"
                        data-act="{{ feat.activation|floatformat:2 }}"
                        data-idx="{{ feat.index }}"
                        data-act-val="{{ feat.activation }}"
                        data-desc="{{ feat.description }}"
+                       data-active="{{ feat.active }}"
                        onmouseover="showTooltip(event, this)"
                        onmouseout="hideTooltip()">
                     </a>
@@ -453,24 +464,25 @@
                          id="featuresListContainer">
                         {% for feat in activations %}
                         <a href="{% url 'explorer:feature_detail' selected_run.id feat.index %}"
-                           class="feature-row"
+                           class="feature-row{% if not feat.active %} feature-inactive{% endif %}"
                            target="_blank"
                            data-label="{{ feat.label|lower }}"
                            data-idx="{{ feat.index }}"
-                           data-act-val="{{ feat.activation }}">
+                           data-act-val="{{ feat.activation }}"
+                           data-active="{{ feat.active }}">
 
                             <div class="text-truncate me-2" style="max-width: 200px;">
                                 <span class="font-monospace text-muted small me-2">
                                     #{{ feat.index }}
                                 </span>
-                                <span class="text-white small fw-bold"
+                                <span class="{% if feat.active %}text-white{% else %}text-muted{% endif %} small fw-bold"
                                       title="{{ feat.label }}">
                                     {{ feat.label }}
                                 </span>
                             </div>
 
                             <div class="text-end">
-                                <span class="font-monospace text-accent small">
+                                <span class="font-monospace {% if feat.active %}text-accent{% else %}text-muted{% endif %} small">
                                     {{ feat.activation|floatformat:1 }}
                                 </span>
                                 <i class="bi bi-chevron-right text-muted ms-2"
@@ -667,10 +679,15 @@
         // Scale bars + animate
         bars.forEach((b, idx) => {
             const v = parseFloat(b.dataset.actVal) || 0;
-            const h = (v / max) * 100;
+            const isActive = b.dataset.active === 'True';
+            const h = isActive ? Math.max((v / max) * 100, 5) : 2;
             b.style.height = h + "%";
-            b.style.setProperty('--delay', (idx * 0.02) + 's');
-            b.classList.add('animated-bar');
+            if (isActive) {
+                b.style.setProperty('--delay', (idx * 0.02) + 's');
+                b.classList.add('animated-bar');
+            } else {
+                b.style.opacity = '0.15';
+            }
         });
     });
 </script>
