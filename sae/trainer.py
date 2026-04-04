@@ -124,9 +124,13 @@ def train_sae_run(run_id: int):
         # 2. Flattening (Schiacciamento)
         flat_embeddings = []
         for doc_vecs in docs_vectors:
-            if not doc_vecs: continue
+            if doc_vecs is None:
+                continue
 
-            # Gestione robusta: controlla se è lista di liste o lista di float (vecchio formato)
+            # ChromaDB returns numpy arrays — convert to list for uniform handling
+            if hasattr(doc_vecs, 'tolist'):
+                doc_vecs = doc_vecs.tolist()
+
             if isinstance(doc_vecs, list) and len(doc_vecs) > 0:
                 if isinstance(doc_vecs[0], list):
                     # Caso corretto: Documento -> [Chunk1, Chunk2]
