@@ -82,6 +82,12 @@ class Interpretation(models.Model):
     # Salveremo: {'positive': [...], 'negative': [...]}
     evidence_docs = models.JSONField(default=dict)
 
+    # Predictor LLM scores (Paper §3.1)
+    predictor_pearson = models.FloatField(null=True, blank=True,
+        help_text="Pearson correlation between predicted and actual activations")
+    predictor_f1 = models.FloatField(null=True, blank=True,
+        help_text="F1 score of binary activation prediction")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

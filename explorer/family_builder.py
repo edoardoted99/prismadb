@@ -75,37 +75,65 @@ def build_feature_families(run_id, threshold=0.1, n_iterations=3):
 
             directed_tree.add_edge(parent, child)
 
-        # D. Estrai Famiglie (DFS / Componenti connesse dirette)
-        # Una famiglia è definita da una radice locale (nodo con out-degree > 0 in questo albero)
-        # Per semplicità, prendiamo ogni nodo che ha figli come "Genitore" di una famiglia locale.
-
+        # D. Extract families via DFS from root nodes (Paper §4.2)
+        # Root nodes = no incoming edges, with at least one outgoing edge
+        roots = [n for n in directed_tree.nodes()
+                 if directed_tree.in_degree(n) == 0
+                 and directed_tree.out_degree(n) > 0]
         parents_in_this_iter = set()
 
         with transaction.atomic():
-            for node in directed_tree.nodes():
-                children = list(directed_tree.successors(node))
-                if children:
-                    # Abbiamo trovato una famiglia!
-                    parents_in_this_iter.add(node)
+            for root in roots:
+                # DFS to collect all descendants
+                descendants = list(nx.dfs_preorder_nodes(directed_tree, root))
+                descendants.remove(root)
 
-                    # Crea oggetto Famiglia
-                    parent_obj = feat_map[node]
-                    family = FeatureFamily.objects.create(
-                        run=run,
-                        parent_feature=parent_obj,
-                        iteration=iteration,
-                        size=len(children) + 1,
-                        # Usiamo la label del genitore come nome provvisorio della famiglia
-                        family_label=parent_obj.label or f"Family {node}"
-                    )
+                if not descendants:
+                    continue
 
-                    # Aggiungi figli
-                    child_objs = [feat_map[c] for c in children]
-                    family.children_features.set(child_objs)
-                    families_created += 1
+                parents_in_this_iter.add(root)
 
-        # E. Rimuovi i genitori per la prossima iterazione
-        # "removing parent features after each iteration to re-form the MST"
+                parent_obj = feat_map[root]
+                family = FeatureFamily.objects.create(
+                    run=run,
+                    parent_feature=parent_obj,
+                    iteration=iteration,
+                    size=len(descendants) + 1,
+                    family_label=parent_obj.label or f"Family {root}"
+                )
+
+                child_objs = [feat_map[c] for c in descendants]
+                family.children_features.set(child_objs)
+                families_created += 1
+
+        # De-duplicate families with Jaccard overlap > 0.6 (Paper §4.2)
+        iter_families = list(FeatureFamily.objects.filter(run=run, iteration=iteration))
+        to_delete = set()
+        for i, f1 in enumerate(iter_families):
+            if f1.id in to_delete:
+                continue
+            set1 = set(f1.children_features.values_list('feature_index', flat=True))
+            set1.add(f1.parent_feature.feature_index)
+            for f2 in iter_families[i+1:]:
+                if f2.id in to_delete:
+                    continue
+                set2 = set(f2.children_features.values_list('feature_index', flat=True))
+                set2.add(f2.parent_feature.feature_index)
+                jaccard = len(set1 & set2) / len(set1 | set2) if len(set1 | set2) > 0 else 0
+                if jaccard > 0.6:
+                    # Keep the larger family
+                    if f1.size >= f2.size:
+                        to_delete.add(f2.id)
+                    else:
+                        to_delete.add(f1.id)
+                        break
+        if to_delete:
+            deleted_count = len(to_delete)
+            FeatureFamily.objects.filter(id__in=to_delete).delete()
+            families_created -= deleted_count
+            print(f"[Families] De-duplicated {deleted_count} families (Jaccard > 0.6)")
+
+        # E. Remove parent features for next iteration (Paper §4.2)
         active_nodes -= parents_in_this_iter
 
         if not parents_in_this_iter:

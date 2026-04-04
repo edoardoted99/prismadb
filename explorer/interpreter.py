@@ -84,8 +84,8 @@ def scan_single_feature_examples(run, feature_index, k=10):
                 X_batch = zscore_transform(X_batch, mean, std)
 
                 with torch.no_grad():
-                    acts = model.encode(X_batch)
-                    feat_acts = acts[:, feature_index].cpu()
+                    _, _, h_topk = model(X_batch)
+                    feat_acts = h_topk[:, feature_index].cpu()
 
                 indices = torch.nonzero(feat_acts > 0.001).flatten()
 
@@ -124,8 +124,8 @@ def scan_single_feature_examples(run, feature_index, k=10):
                 X_batch = zscore_transform(X_batch, mean, std)
 
                 with torch.no_grad():
-                    acts = model.encode(X_batch)
-                    feat_acts = acts[:, feature_index].cpu()
+                    _, _, h_topk = model(X_batch)
+                    feat_acts = h_topk[:, feature_index].cpu()
 
                 indices = torch.nonzero(feat_acts > 0.001).flatten()
 
@@ -190,8 +190,8 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
                 X_batch = zscore_transform(X_batch, mean, std)
 
                 with torch.no_grad():
-                    acts = model.encode(X_batch)
-                    feat_acts = acts[:, feature_index].cpu()
+                    _, _, h_topk = model(X_batch)
+                    feat_acts = h_topk[:, feature_index].cpu()
 
                 for i, val in enumerate(feat_acts):
                     if val.item() < 0.001:
@@ -215,8 +215,8 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
                 X_batch = zscore_transform(X_batch, mean, std)
 
                 with torch.no_grad():
-                    acts = model.encode(X_batch)
-                    feat_acts = acts[:, feature_index].cpu()
+                    _, _, h_topk = model(X_batch)
+                    feat_acts = h_topk[:, feature_index].cpu()
 
                 for i, val in enumerate(feat_acts):
                     if val.item() < 0.001:
@@ -229,6 +229,72 @@ def get_negative_examples(run, feature_index, k=5, model=None, mean=None, std=No
                 break
 
     return negatives[:k]
+
+
+def run_predictor(label, pos_examples, neg_examples, model_name, temperature=0.2):
+    """
+    Paper §3.1: Predictor LLM evaluates feature interpretability.
+    Sends 3 activating + 3 non-activating abstracts individually,
+    computes Pearson correlation and F1 score.
+    Returns (pearson_correlation, f1_score) or (None, None) on failure.
+    """
+    from .llm_utils import PREDICTOR_PROMPT_TEMPLATE, get_ollama_response
+
+    system_prompt = PREDICTOR_PROMPT_TEMPLATE.format(label=label)
+
+    pred_pos = pos_examples[:3]
+    pred_neg = neg_examples[:3]
+
+    abstracts = [(doc, 1) for doc in pred_pos] + [(doc, -1) for doc in pred_neg]
+
+    predictions = []
+    ground_truth = []
+
+    for doc, gt in abstracts:
+        text = doc.get('text', '') if isinstance(doc, dict) else str(doc)
+        text = text.replace('\n', ' ').strip()
+
+        result = get_ollama_response(
+            user_message=f"Text: {text}",
+            system_message=system_prompt,
+            model=model_name,
+            temperature=temperature
+        )
+
+        if result and 'score' in result:
+            try:
+                score = max(-1.0, min(1.0, float(result['score'])))
+            except (ValueError, TypeError):
+                continue
+            predictions.append(score)
+            ground_truth.append(gt)
+
+    if len(predictions) < 4:
+        logger.warning(f"[Predictor] Only {len(predictions)} valid predictions, need >= 4")
+        return None, None
+
+    import numpy as np
+    preds = np.array(predictions, dtype=float)
+    truth = np.array(ground_truth, dtype=float)
+
+    # Pearson correlation
+    mx, my = preds.mean(), truth.mean()
+    num = ((preds - mx) * (truth - my)).sum()
+    den = np.sqrt(((preds - mx)**2).sum() * ((truth - my)**2).sum())
+    pearson = float(num / den) if den > 1e-10 else 0.0
+
+    # F1 score (active if score > 0)
+    pred_active = preds > 0
+    true_active = truth > 0
+    tp = int((pred_active & true_active).sum())
+    fp = int((pred_active & ~true_active).sum())
+    fn = int((~pred_active & true_active).sum())
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    return round(pearson, 4), round(f1, 4)
+
 
 def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, temperature=0.2):
     """
@@ -309,22 +375,39 @@ def interpret_single_feature(feature_id, model_name, prompt, k_pos=5, k_neg=5, t
         logger.info(f"[Interpreter] Ollama responded in {duration:.2f}s. Result: {result}")
 
         if result:
-            TASK_PROGRESS[tid].update({'progress': 90, 'message': 'Saving interpretation...'})
+            TASK_PROGRESS[tid].update({'progress': 80, 'message': 'Saving interpretation...'})
             interp = Interpretation.objects.create(
                 feature=feature,
                 label=result.get('label', 'Unknown'),
                 description=result.get('description', ''),
                 llm_model=model_name,
-                system_prompt=prompt,     # <--- CORRETTO
+                system_prompt=prompt,
                 temperature=temperature,
-                evidence_docs={'positive': pos_examples}
+                evidence_docs={'positive': pos_examples, 'negative': neg_examples}
             )
 
             feature.label = result.get('label', 'Unknown')
             feature.description = result.get('description', '')
-            feature.active_interpretation = interp # Link new interpretation
+            feature.active_interpretation = interp
             feature.save()
             logger.info("[Interpreter] Interpretation saved successfully.")
+
+            # Predictor LLM: evaluate interpretability (Paper §3.1)
+            TASK_PROGRESS[tid].update({'progress': 85, 'message': 'Running Predictor LLM...'})
+            # Use different examples than the interpreter when available
+            pred_pos = feature.example_docs[k_pos:k_pos+3] if len(feature.example_docs) > k_pos else feature.example_docs[:3]
+            pearson, f1 = run_predictor(
+                label=result.get('label', ''),
+                pos_examples=pred_pos,
+                neg_examples=neg_examples[:3],
+                model_name=model_name,
+                temperature=temperature
+            )
+            if pearson is not None:
+                interp.predictor_pearson = pearson
+                interp.predictor_f1 = f1
+                interp.save(update_fields=['predictor_pearson', 'predictor_f1'])
+                logger.info(f"[Interpreter] Predictor: Pearson={pearson}, F1={f1}")
 
             TASK_PROGRESS[tid].update({'progress': 100, 'message': 'Done.'})
             return True
@@ -409,7 +492,7 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 X_batch = zscore_transform(X_batch, mean, std)
 
                 with torch.no_grad():
-                    feature_acts = model.encode(X_batch)
+                    _, _, feature_acts = model(X_batch)
 
                 feature_acts_cpu = feature_acts.cpu()
 
@@ -533,7 +616,10 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 })
             # ---------------------------------
 
-            pos_examples = sorted(top_activations[f_idx], key=lambda x: x[0], reverse=True)[:k_pos]
+            all_examples_sorted = sorted(top_activations[f_idx], key=lambda x: x[0], reverse=True)
+            pos_examples = all_examples_sorted[:k_pos]
+            # Reserve extra examples for Predictor (Paper §3.1: use different abstracts)
+            pred_pos_raw = all_examples_sorted[k_pos:k_pos+3] if len(all_examples_sorted) > k_pos else all_examples_sorted[:3]
 
             # Recupero Negativi
             neg_examples = get_negative_examples(run, f_idx, k=k_neg, model=model, mean=mean, std=std)
@@ -583,6 +669,21 @@ def run_interpretation_pipeline(run_id, features_to_analyze=50, ollama_model="qw
                 # LINK ACTIVE INTERPRETATION
                 feat_obj.active_interpretation = interp
                 feat_obj.save()
+
+                # Predictor LLM (Paper §3.1)
+                pred_pos_docs = [{'id': pid, 'act': float(pval), 'text': ptxt} for pval, pid, ptxt in pred_pos_raw]
+                pearson, f1 = run_predictor(
+                    label=result.get('label', ''),
+                    pos_examples=pred_pos_docs,
+                    neg_examples=neg_examples[:3],
+                    model_name=ollama_model,
+                    temperature=temp
+                )
+                if pearson is not None:
+                    interp.predictor_pearson = pearson
+                    interp.predictor_f1 = f1
+                    interp.save(update_fields=['predictor_pearson', 'predictor_f1'])
+                    logger.info(f"   > Predictor: Pearson={pearson}, F1={f1}")
 
                 logger.info(f"   > SUCCESS: {result.get('label')} ({time.time()-start_ts:.1f}s)")
                 success_count += 1

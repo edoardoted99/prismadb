@@ -68,6 +68,21 @@ OUTPUT DESCRIPTION: Given the inputs provided, complete the following tasks.
 Respond EXCLUSIVELY with valid JSON: {'label': '...', 'description': '...'}"""
 
 
+# Predictor prompt template (Paper §3.1)
+# The Predictor evaluates interpretability by predicting feature activations on unseen text.
+PREDICTOR_PROMPT_TEMPLATE = """You are evaluating whether a specific neuron in a language model would activate on a given text.
+
+The neuron has been labeled as: "{label}"
+
+Given the text below, predict your confidence that this neuron would activate on it.
+Express your confidence as a single score from -1 to +1:
+- +1 means absolute certainty the neuron WOULD activate
+- 0 means completely uncertain
+- -1 means absolute certainty the neuron would NOT activate
+
+Respond EXCLUSIVELY with valid JSON: {{"score": <number between -1 and 1>}}"""
+
+
 def get_ollama_response(user_message, system_message, model="qwen2.5:14b",
                         base_url=None, temperature=0.2, retries=2):
     if base_url is None:

@@ -77,27 +77,30 @@ class SAE(nn.Module):
     def initialize_from_data(self, X: torch.Tensor):
         """
         Paper-aligned initialization (Appendix A.1):
-        1. b_pre (encoder bias) = -geometric_median(X)
+        1. Decoder bias = geometric_median(X) (Bricken et al. 2023)
         2. Decoder columns normalized to unit length
         3. Encoder rows set parallel to decoder columns
-        4. Encoder magnitudes matched to input magnitudes
+        4. Encoder bias zeroed (centering via decoder bias)
+        5. Encoder magnitudes matched to input magnitudes
         """
         with torch.no_grad():
-            # 1. Encoder bias from geometric median (Bricken et al. 2023)
             sample = X[:min(4096, len(X))]
             geo_med = _geometric_median(sample)
-            self.encoder.bias.data = -geo_med.repeat(self.d_latent // self.d_in + 1)[:self.d_latent]
+
+            # 1. Decoder bias = geometric median (Bricken et al. 2023, Paper A.1)
+            self.decoder.bias.data = geo_med.clone()
 
             # 2. Normalize decoder columns to unit length
             self.normalize_decoder()
 
             # 3. Set encoder directions parallel to decoder directions
-            # Decoder weight: [d_in, d_latent] -> columns are feature directions
-            # Encoder weight: [d_latent, d_in] -> rows are feature directions
             self.encoder.weight.data = self.decoder.weight.data.T.clone()
 
-            # 4. Scale encoder magnitudes to match input magnitudes (Gao et al. 2024)
-            avg_norm = X[:min(4096, len(X))].norm(dim=1).mean()
+            # 4. Encoder bias zeroed (centering handled by decoder bias)
+            self.encoder.bias.data.zero_()
+
+            # 5. Scale encoder magnitudes to match input magnitudes (Gao et al. 2024)
+            avg_norm = sample.norm(dim=1).mean()
             encoder_norms = self.encoder.weight.data.norm(dim=1, keepdim=True).clamp_min(1e-8)
             self.encoder.weight.data *= avg_norm / encoder_norms
 
@@ -141,7 +144,6 @@ class SAE(nn.Module):
 
     def forward(self, x: torch.Tensor):
         h = self.encode(x)
-        self.mark_activity(h)
 
         # Top-K selection
         val, idx = torch.topk(h, k=self.k, dim=1)
@@ -149,6 +151,7 @@ class SAE(nn.Module):
         mask_topk.scatter_(1, idx, True)
 
         h_topk = torch.where(mask_topk, h, torch.zeros_like(h))
+        self.mark_activity(h_topk)  # Post-top-K tracking (Paper §2.2.1)
         x_hat = self.decode(h_topk)
 
         return x_hat, h, h_topk
